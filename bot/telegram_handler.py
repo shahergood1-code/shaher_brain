@@ -142,16 +142,19 @@ async def handle_update(update_data: dict, bot: Bot) -> None:
                     chat_id=chat_id,
                     text=f"🎨 الصورة جاهزة ({img_result.size}):\n{img_result.image_url}",
                 )
-        await log_interaction(
-            user_message=user_text,
-            ai_response=img_result.image_url or img_result.error or "",
-            ai_source="image_gen",
-            ai_model=img_result.model_used,
-            message_type=message_type,
-            telegram_user_id=user_id,
-            telegram_chat_id=chat_id,
-            response_time_ms=img_result.response_time_ms,
-            error_details=img_result.error,
+        # تسجيل التفاعل في الخلفية بدون تأخير استجابة الـ Webhook
+        asyncio.create_task(
+            log_interaction(
+                user_message=user_text,
+                ai_response=img_result.image_url or img_result.error or "",
+                ai_source="image_gen",
+                ai_model=img_result.model_used,
+                message_type=message_type,
+                telegram_user_id=user_id,
+                telegram_chat_id=chat_id,
+                response_time_ms=img_result.response_time_ms,
+                error_details=img_result.error,
+            )
         )
         return
 
@@ -182,16 +185,18 @@ async def handle_update(update_data: dict, bot: Bot) -> None:
         # لو فيه حاجة في التنسيق غلط، نبعت plain text
         await bot.send_message(chat_id=chat_id, text=response_to_send)
 
-    # ── تسجيل التفاعل في Supabase ──
-    await log_interaction(
-        user_message=user_text,
-        ai_response=ai_result.content,
-        ai_source=ai_result.source,
-        ai_model=ai_result.model,
-        message_type=message_type,
-        telegram_user_id=user_id,
-        telegram_chat_id=chat_id,
-        response_time_ms=ai_result.response_time_ms,
-        tokens_used=ai_result.tokens_used,
-        error_details=ai_result.error,
+    # ── تسجيل التفاعل في Supabase في الخلفية ──
+    asyncio.create_task(
+        log_interaction(
+            user_message=user_text,
+            ai_response=ai_result.content,
+            ai_source=ai_result.source,
+            ai_model=ai_result.model,
+            message_type=message_type,
+            telegram_user_id=user_id,
+            telegram_chat_id=chat_id,
+            response_time_ms=ai_result.response_time_ms,
+            tokens_used=ai_result.tokens_used,
+            error_details=ai_result.error,
+        )
     )

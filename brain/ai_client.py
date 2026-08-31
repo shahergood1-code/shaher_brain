@@ -148,6 +148,12 @@ def _build_messages(user_message: str, history: list[dict], system: str) -> list
     return messages
 
 
+# ─── Timeouts & Performance Settings ──────────────────────────────
+GEMINI_TIMEOUT_SECONDS = float(os.getenv("GEMINI_TIMEOUT", "7.0"))
+SEEKAI_TIMEOUT_SECONDS = float(os.getenv("SEEKAI_TIMEOUT", "8.0"))
+DUCKAI_TIMEOUT_SECONDS = float(os.getenv("DUCKAI_TIMEOUT", "9.0"))
+
+
 # ─── Source 1: Gemini Official ────────────────────────────
 
 async def _try_gemini(
@@ -156,7 +162,7 @@ async def _try_gemini(
     system_prompt: str,
     api_key: str,
 ) -> AIResponse:
-    """Gemini Official API — المصدر الأساسي."""
+    """Gemini Official API — المصدر الأساسي مع مهلة سريعة."""
     import google.generativeai as genai
 
     start = time.time()
@@ -175,7 +181,12 @@ async def _try_gemini(
             chat_history.append({"role": "model", "parts": [item["ai_response"]]})
 
     chat = model.start_chat(history=chat_history)
-    response = await asyncio.to_thread(chat.send_message, user_message)
+    
+    # حماية بـ timeout صريح لمنع التعليق
+    response = await asyncio.wait_for(
+        asyncio.to_thread(chat.send_message, user_message),
+        timeout=GEMINI_TIMEOUT_SECONDS
+    )
 
     elapsed = int((time.time() - start) * 1000)
     return AIResponse(
@@ -208,13 +219,16 @@ async def _try_seekai(
     # لو محددش موديل: بيختار من SEEKAI_MODELS، لو مش موجود يرجع للافتراضي
     model_name = SEEKAI_MODELS.get(model or "default", model or SEEKAI_MODELS["default"])
 
-    client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+    client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=SEEKAI_TIMEOUT_SECONDS)
     messages = _build_messages(user_message, history, system_prompt)
 
-    response = await client.chat.completions.create(
-        model=model_name,
-        messages=messages,
-        max_tokens=2048,
+    response = await asyncio.wait_for(
+        client.chat.completions.create(
+            model=model_name,
+            messages=messages,
+            max_tokens=2048,
+        ),
+        timeout=SEEKAI_TIMEOUT_SECONDS
     )
 
     elapsed = int((time.time() - start) * 1000)
@@ -248,8 +262,11 @@ async def _try_duckai(
 
     full_prompt = f"{system_prompt}\n\n{context_text}User: {user_message}"
 
-    response_text = await asyncio.to_thread(
-        lambda: next(DDGS().chat(full_prompt, model="gpt-4o-mini"), "")
+    response_text = await asyncio.wait_for(
+        asyncio.to_thread(
+            lambda: next(DDGS().chat(full_prompt, model="gpt-4o-mini"), "")
+        ),
+        timeout=DUCKAI_TIMEOUT_SECONDS
     )
 
     elapsed = int((time.time() - start) * 1000)
@@ -270,20 +287,13 @@ async def get_ai_response(
     seekai_model: str | None = None,
 ) -> AIResponse:
     """
-    الدالة الرئيسية — بتجرب المصادر بالترتيب وتنتقل تلقائيًا عند الفشل.
+    الدالة الرئيسية — بتجرب المصادر بالترتيب وتنتقل تلقائيًا وسريعاً عند التأخر أو الفشل.
 
     Args:
         user_message:  رسالة المستخدم
         context:       النتيجة من get_full_context()
         component:     اسم المكون (عشان API key منفصل لكل مكون)
-        seekai_model:  موديل SeekAI محدد لو Gemini فشل:
-                       'gpt'             -> gpt-5.6-sol
-                       'claude'          -> claude-sonnet-5
-                       'gpt-5.6-sol'     -> اسم صريح
-                       'claude-sonnet-5' -> اسم صريح
-                       None              -> الافتراضي من .env
-
-        Gemini يفضل هو المصدر الأول دايمًا.
+        seekai_model:  موديل SeekAI محدد لو Gemini فشل
     """
     if context is None:
         context = {}
@@ -292,7 +302,7 @@ async def get_ai_response(
     history = context.get("recent_messages", [])
     errors = []
 
-    # -- المصدر 1: Gemini Official (افتراضي دايمًا) --
+    # -- المصدر 1: Gemini Official (افتراضي دايمًا مع مهلة سريعة) --
     gemini_key = (
         os.getenv(f"GEMINI_API_KEY_{component.upper()}")
         or os.getenv("GEMINI_API_KEY_BRAIN")
@@ -300,6 +310,11 @@ async def get_ai_response(
     if gemini_key:
         try:
             return await _try_gemini(user_message, history, system_prompt, gemini_key)
+        except asyncio.TimeoutError:
+            error_msg = f"Gemini: Timeout exceeded ({GEMINI_TIMEOUT_SECONDS}s)"
+            errors.append(error_msg)
+            label = seekai_model or "default"
+            print(f"[WARN] {error_msg} -- Fast switching to SeekAI ({label})...")
         except Exception as e:
             error_msg = f"Gemini: {type(e).__name__}: {e}"
             errors.append(error_msg)
@@ -314,6 +329,11 @@ async def get_ai_response(
                 user_message, history, system_prompt,
                 seekai_key, model=seekai_model,
             )
+        except asyncio.TimeoutError:
+            label = seekai_model or "default"
+            error_msg = f"SeekAI ({label}): Timeout exceeded ({SEEKAI_TIMEOUT_SECONDS}s)"
+            errors.append(error_msg)
+            print(f"[WARN] {error_msg} -- Fast switching to Duck.ai...")
         except Exception as e:
             label = seekai_model or "default"
             error_msg = f"SeekAI ({label}): {type(e).__name__}: {e}"
@@ -323,6 +343,8 @@ async def get_ai_response(
     # -- المصدر 3: Duck.ai --
     try:
         return await _try_duckai(user_message, history, system_prompt)
+    except asyncio.TimeoutError:
+        errors.append(f"Duck.ai: Timeout exceeded ({DUCKAI_TIMEOUT_SECONDS}s)")
     except Exception as e:
         errors.append(f"Duck.ai: {type(e).__name__}: {e}")
 

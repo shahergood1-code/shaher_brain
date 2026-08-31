@@ -179,7 +179,17 @@ async def generate_image(
 async def _enhance_prompt(prompt_text: str, format_type: str = "default") -> str:
     """
     يحوّل ويحسّن البرومبت إلى وصف فوتوغرافي/فني إنجليزي فائق الدقة لموديل Flux.
+    يدعم النماذج الواقعية والإضاءة السينمائية والتفاصيل الدقيقة بدقة 8k.
     """
+    format_hints = {
+        "youtube": "High CTR YouTube thumbnail style, vibrant contrasting colors, dramatic lighting, sharp focus on subject, clean background with depth of field, 16:9 aspect ratio",
+        "story": "Vertical 9:16 portrait composition, immersive mobile photography, moody dramatic lighting, ultra-high resolution",
+        "post": "Crisp social media banner, professional composition, balanced lighting, striking visual appeal",
+        "instagram": "Square 1:1 format, studio quality portrait or scene, symmetrical aesthetics, masterful color grading",
+        "default": "Photorealistic masterpiece, cinematic lighting, 8k resolution, intricate textures, ray tracing, sharp details",
+    }
+    hint = format_hints.get(format_type, format_hints["default"])
+
     try:
         gemini_key = os.getenv("GEMINI_API_KEY_BRAIN")
         if gemini_key:
@@ -190,23 +200,33 @@ async def _enhance_prompt(prompt_text: str, format_type: str = "default") -> str
             m = genai.GenerativeModel(model_name)
             
             prompt_instruction = (
-                "You are a world-class AI art director and prompt engineer for Flux AI image generation. "
-                "Transform the following user request into a highly detailed, breathtaking English prompt. "
-                "Specify vivid lighting, artistic style, texture, depth of field, dramatic composition, and ultra-high fidelity (8k resolution, photorealistic or masterpiece digital art). "
-                "Do NOT write any introduction or explanation. Output ONLY the raw English prompt."
+                "You are an elite AI Art Director specializing in Flux-Dev and Midjourney prompt engineering. "
+                "Your task: Convert the user's description (which may be in Arabic or English) into an extraordinary, "
+                "ultra-detailed English visual prompt.\n\n"
+                "Rules:\n"
+                "1. Output ONLY the refined English prompt text. No quotes, no markdown labels, no intro/outro.\n"
+                "2. Include specific artistic style, lighting (e.g. volumetric lighting, golden hour, neon rim lights), "
+                "camera details (e.g. 35mm lens, f/1.8, bokeh, hyper-detailed, photorealistic, 8k resolution, Unreal Engine 5 render).\n"
+                f"3. Incorporate these composition guidelines: {hint}\n"
+                "4. Keep it focused, evocative, and visually breathtaking."
             )
             
-            resp = await asyncio.to_thread(
-                m.generate_content,
-                f"{prompt_instruction}\n\nSubject: {prompt_text}\nContext/Format: {format_type}"
+            resp = await asyncio.wait_for(
+                asyncio.to_thread(
+                    m.generate_content,
+                    f"{prompt_instruction}\n\nUser Concept: {prompt_text}"
+                ),
+                timeout=6.0
             )
             if resp and resp.text:
-                cleaned = resp.text.strip().replace('"', '').replace('`', '')
-                if cleaned:
+                cleaned = resp.text.strip().replace('"', '').replace('`', '').replace('\n', ' ')
+                if len(cleaned) > 10:
                     return cleaned
     except Exception as e:
-        print(f"[WARN] Prompt enhancement failed: {e}")
-    return prompt_text
+        print(f"[WARN] Prompt enhancement failed or timed out: {e}")
+
+    # Fallback enrichment إذا تعذر الاتصال بـ Gemini
+    return f"{prompt_text}, {hint}, photorealistic, ultra-detailed, 8k resolution, cinematic lighting"
 
 
 async def _log_generated_image(result: ImageResult) -> None:
