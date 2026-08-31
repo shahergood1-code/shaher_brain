@@ -186,9 +186,16 @@ async def _enhance_prompt(prompt_text: str, format_type: str = "default") -> str
         "story": "Vertical 9:16 portrait composition, immersive mobile photography, moody dramatic lighting, ultra-high resolution",
         "post": "Crisp social media banner, professional composition, balanced lighting, striking visual appeal",
         "instagram": "Square 1:1 format, studio quality portrait or scene, symmetrical aesthetics, masterful color grading",
+        "ad": "Ultra-clean modern commercial advertisement banner, luxury product podium mockup, sleek aesthetic, cinematic softbox studio lighting, 8k render",
         "default": "Photorealistic masterpiece, cinematic lighting, 8k resolution, intricate textures, ray tracing, sharp details",
     }
-    hint = format_hints.get(format_type, format_hints["default"])
+    
+    # كشف نوع الإعلان أو التصميم
+    lower_prompt = prompt_text.lower()
+    if any(w in lower_prompt for w in ["اعلان", "إعلان", "منتج", "بوستر", "commercial", "ad", "poster"]):
+        hint = format_hints["ad"]
+    else:
+        hint = format_hints.get(format_type, format_hints["default"])
 
     try:
         gemini_key = os.getenv("GEMINI_API_KEY_BRAIN")
