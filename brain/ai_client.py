@@ -143,7 +143,7 @@ def _build_messages(user_message: str, history: list[dict], system: str) -> list
 
 # ─── Timeouts & Performance Settings ──────────────────────────────
 GEMINI_TIMEOUT_SECONDS = float(os.getenv("GEMINI_TIMEOUT", "7.0"))
-SEEKAI_TIMEOUT_SECONDS = float(os.getenv("SEEKAI_TIMEOUT", "8.0"))
+SEEKAI_TIMEOUT_SECONDS = float(os.getenv("SEEKAI_TIMEOUT", "30.0"))
 DUCKAI_TIMEOUT_SECONDS = float(os.getenv("DUCKAI_TIMEOUT", "9.0"))
 
 
