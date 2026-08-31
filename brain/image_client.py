@@ -223,9 +223,33 @@ async def _enhance_prompt(prompt_text: str, format_type: str = "default") -> str
                 if len(cleaned) > 10:
                     return cleaned
     except Exception as e:
-        print(f"[WARN] Prompt enhancement failed or timed out: {e}")
+        print(f"[WARN] Gemini prompt enhancement failed or timed out: {e} -- trying NVIDIA NIM...")
 
-    # Fallback enrichment إذا تعذر الاتصال بـ Gemini
+    # ── Fallback via NVIDIA NIM ──
+    try:
+        nvidia_key = os.getenv("NVIDIA_API_KEY")
+        if nvidia_key:
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(api_key=nvidia_key, base_url="https://integrate.api.nvidia.com/v1", timeout=10.0)
+            prompt_instruction = (
+                "You are an elite AI Art Director specializing in Flux-Dev and Midjourney prompt engineering. "
+                "Transform the following user concept into an extraordinary, ultra-detailed English prompt. "
+                f"Incorporate style: {hint}, 8k resolution, cinematic lighting, photorealistic. "
+                "Output ONLY the prompt text without any intro or markdown."
+            )
+            r = await client.chat.completions.create(
+                model=os.getenv("NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct"),
+                messages=[{"role": "system", "content": prompt_instruction}, {"role": "user", "content": prompt_text}],
+                max_tokens=200
+            )
+            if r.choices and r.choices[0].message.content:
+                cleaned = r.choices[0].message.content.strip().replace('"', '').replace('`', '').replace('\n', ' ')
+                if len(cleaned) > 10:
+                    return cleaned
+    except Exception as e:
+        print(f"[WARN] NVIDIA prompt enhancement failed: {e}")
+
+    # Fallback keyword enrichment
     return f"{prompt_text}, {hint}, photorealistic, ultra-detailed, 8k resolution, cinematic lighting"
 
 
