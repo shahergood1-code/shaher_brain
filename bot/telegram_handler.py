@@ -172,18 +172,60 @@ async def handle_update(update_data: dict, bot: Bot) -> None:
         component="brain",
     )
 
-    # ── إرسال الرد لـ Telegram ──
+    # ── إرسال الرد لـ Telegram (مع دعم الرسائل الطويلة وملفات الأكواد) ──
     response_to_send = ai_result.content
-    # Telegram Markdown parsing — نحاول أولًا بـ Markdown
-    try:
-        await bot.send_message(
-            chat_id=chat_id,
-            text=response_to_send,
-            parse_mode="Markdown",
-        )
-    except Exception:
-        # لو فيه حاجة في التنسيق غلط، نبعت plain text
-        await bot.send_message(chat_id=chat_id, text=response_to_send)
+    
+    # 1. إرسال النص مع دعم التقسيم التلقائي لو تجاوز 4000 حرف
+    max_chunk = 3900
+    if len(response_to_send) <= max_chunk:
+        try:
+            await bot.send_message(chat_id=chat_id, text=response_to_send, parse_mode="Markdown")
+        except Exception:
+            await bot.send_message(chat_id=chat_id, text=response_to_send)
+    else:
+        # تقسيم الرد لأجزاء
+        chunks = [response_to_send[i:i + max_chunk] for i in range(0, len(response_to_send), max_chunk)]
+        for chunk in chunks:
+            try:
+                await bot.send_message(chat_id=chat_id, text=chunk, parse_mode="Markdown")
+            except Exception:
+                await bot.send_message(chat_id=chat_id, text=chunk)
+
+    # 2. ميزة المطورين: إذا كان الرد يحتوي على كود برمجي كامل لموقع أو سكريبت، نرسله كملف جاهز للتشغيل
+    if "```html" in response_to_send.lower() or "```python" in response_to_send.lower() or "<!doctype html>" in response_to_send.lower():
+        try:
+            import io
+            from telegram import InputFile
+            
+            if "```html" in response_to_send.lower():
+                ext = "html"
+                fname = "website_preview.html"
+            elif "```python" in response_to_send.lower():
+                ext = "py"
+                fname = "script.py"
+            else:
+                ext = "html"
+                fname = "index.html"
+
+            # استخراج الكود النقي
+            start_code = response_to_send.find(f"```{ext}")
+            if start_code != -1:
+                start_code += len(f"```{ext}")
+                end_code = response_to_send.find("```", start_code)
+                code_content = response_to_send[start_code:end_code].strip() if end_code != -1 else response_to_send[start_code:].strip()
+            else:
+                code_content = response_to_send
+
+            file_bytes = io.BytesIO(code_content.encode("utf-8"))
+            file_bytes.name = fname
+            await bot.send_document(
+                chat_id=chat_id,
+                document=file_bytes,
+                caption=f"📁 *ملف الكود جاهز للتشغيل والتحميل:* `{fname}`",
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            print(f"[WARN] Failed to send code file: {e}")
 
     # ── تسجيل التفاعل في Supabase والتعلم الذاتي في الخلفية ──
     asyncio.create_task(
