@@ -312,7 +312,7 @@ async def _try_nvidia(
     )
 
 
-# ─── Source 3: SeekAI ──────────────────────────────────────────────
+# ─── Source 2: SeekAI (المحرك الأساسي للذكاء العربي الفصيح) ────────────
 
 async def _try_seekai(
     user_message: str,
@@ -321,71 +321,46 @@ async def _try_seekai(
     api_key: str,
     model: str | None = None,
 ) -> AIResponse:
-    """SeekAI Aggregator — fallback أول (OpenAI-compatible endpoint)."""
+    """SeekAI — المحرك الأساسي الذكي للمحادثات بطلاقة عربية عالية وجودة Claude/ChatGPT."""
     from openai import AsyncOpenAI
 
     start = time.time()
     base_url = os.getenv("SEEKAI_BASE_URL", "https://seekai.cc/v1")
-    # لو محددش موديل: بيختار من SEEKAI_MODELS، لو مش موجود يرجع للافتراضي
-    model_name = SEEKAI_MODELS.get(model or "default", model or SEEKAI_MODELS["default"])
+    
+    # قائمة الموديلات المتاحة والمضمونة في SeekAI بالترتيب
+    candidate_models = ["glm-5.3-flash", "kimi-k3", "deepseek-v4-flash"]
+    if model:
+        requested = SEEKAI_MODELS.get(model, model)
+        if requested not in candidate_models:
+            candidate_models.insert(0, requested)
 
     client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=SEEKAI_TIMEOUT_SECONDS)
     messages = _build_messages(user_message, history, system_prompt)
 
-    response = await asyncio.wait_for(
-        client.chat.completions.create(
-            model=model_name,
-            messages=messages,
-            max_tokens=2048,
-        ),
-        timeout=SEEKAI_TIMEOUT_SECONDS
-    )
+    last_err = None
+    for model_name in candidate_models:
+        try:
+            response = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model=model_name,
+                    messages=messages,
+                    max_tokens=2048,
+                ),
+                timeout=SEEKAI_TIMEOUT_SECONDS
+            )
+            elapsed = int((time.time() - start) * 1000)
+            return AIResponse(
+                content=response.choices[0].message.content or "",
+                source="seekai",
+                model=model_name,
+                response_time_ms=elapsed,
+                tokens_used=response.usage.total_tokens if response.usage else None,
+            )
+        except Exception as e:
+            last_err = e
+            print(f"[WARN] SeekAI candidate {model_name} failed: {e} -- trying next...")
 
-    elapsed = int((time.time() - start) * 1000)
-    return AIResponse(
-        content=response.choices[0].message.content or "",
-        source="seekai",
-        model=model_name,
-        response_time_ms=elapsed,
-        tokens_used=response.usage.total_tokens if response.usage else None,
-    )
-
-
-# ─── Source 4: Duck.ai ────────────────────────────────────
-
-async def _try_duckai(
-    user_message: str,
-    history: list[dict],
-    system_prompt: str,
-) -> AIResponse:
-    """Duck.ai — fallback إضافي، مجاني بدون API key."""
-    from duckduckgo_search import DDGS
-
-    start = time.time()
-
-    context_text = ""
-    for item in history[-4:]:
-        if item.get("user_message"):
-            context_text += f"User: {item['user_message']}\n"
-        if item.get("ai_response"):
-            context_text += f"Assistant: {item['ai_response']}\n"
-
-    full_prompt = f"{system_prompt}\n\n{context_text}User: {user_message}"
-
-    response_text = await asyncio.wait_for(
-        asyncio.to_thread(
-            lambda: next(DDGS().chat(full_prompt, model="gpt-4o-mini"), "")
-        ),
-        timeout=DUCKAI_TIMEOUT_SECONDS
-    )
-
-    elapsed = int((time.time() - start) * 1000)
-    return AIResponse(
-        content=response_text,
-        source="duckai",
-        model="gpt-4o-mini (duck.ai)",
-        response_time_ms=elapsed,
-    )
+    raise last_err or Exception("All SeekAI models failed")
 
 
 # ─── Smart Adaptive AI Router (Health & Latency Ranker) ────────────
@@ -399,16 +374,14 @@ class SmartAIRouter:
     """
     def __init__(self):
         self.stats = {
-            "seekai":  {"avg_latency": 1500, "fails": 0, "cooldown_until": 0, "tier": 1},
-            "gemini":  {"avg_latency": 1600, "fails": 0, "cooldown_until": 0, "tier": 1},
-            "nvidia":  {"avg_latency": 4500, "fails": 0, "cooldown_until": 0, "tier": 2},
-            "duckai":  {"avg_latency": 6000, "fails": 0, "cooldown_until": 0, "tier": 3},
+            "seekai":  {"avg_latency": 1200, "fails": 0, "cooldown_until": 0, "tier": 1},
+            "gemini":  {"avg_latency": 1500, "fails": 0, "cooldown_until": 0, "tier": 1},
+            "duckai":  {"avg_latency": 4000, "fails": 0, "cooldown_until": 0, "tier": 2},
         }
 
     def record_success(self, provider: str, latency_ms: int):
         if provider in self.stats:
             p = self.stats[provider]
-            # Rolling exponential average
             p["avg_latency"] = int(p["avg_latency"] * 0.6 + latency_ms * 0.4)
             p["fails"] = 0
             p["cooldown_until"] = 0
@@ -417,7 +390,6 @@ class SmartAIRouter:
         if provider in self.stats:
             p = self.stats[provider]
             p["fails"] += 1
-            # Cooldown: 60 ثانية لـ RateLimit، و 25 ثانية للأخطاء الأخرى
             cooldown_secs = 60 if is_rate_limit else 25
             p["cooldown_until"] = time.time() + cooldown_secs
 
@@ -427,7 +399,6 @@ class SmartAIRouter:
         for prov in available_providers:
             info = self.stats.get(prov, {"avg_latency": 5000, "cooldown_until": 0, "tier": 3})
             in_cooldown = now < info["cooldown_until"]
-            # معيار الترتيب: Cooldown أولاً ثم السرعة
             score = info["avg_latency"] + (100000 if in_cooldown else 0)
             scored.append((prov, score))
         scored.sort(key=lambda x: x[1])
@@ -448,8 +419,8 @@ async def get_ai_response(
 ) -> AIResponse:
     """
     الدالة الرئيسية — تختار ديناميكياً أسرع وأفضل مزود في الوقت الفعلي:
-      - تفحص المزودين المتاحين
-      - ترتبهم حسب السرعة الفعلية والصحة
+      - تفحص المزودين المتاحين (SeekAI و Gemini)
+      - ترتبهم حسب الجودة والسرعة
       - تنفذ وتحدث الإحصائيات فوراً
     """
     if context is None:
@@ -461,6 +432,10 @@ async def get_ai_response(
 
     # 1. تحديد المزودين المهيئين بـ API Keys
     configured = []
+    seekai_key = os.getenv("SEEKAI_API_KEY")
+    if seekai_key:
+        configured.append("seekai")
+
     gemini_key = (
         os.getenv(f"GEMINI_API_KEY_{component.upper()}")
         or os.getenv("GEMINI_API_KEY_BRAIN")
@@ -468,57 +443,15 @@ async def get_ai_response(
     if gemini_key:
         configured.append("gemini")
 
-    nvidia_key = os.getenv("NVIDIA_API_KEY")
-    if nvidia_key:
-        configured.append("nvidia")
-
-    seekai_key = os.getenv("SEEKAI_API_KEY")
-    if seekai_key:
-        configured.append("seekai")
-
-    # Duck.ai متاح دائماً كـ Fallback بدون مفتاح
+    # Duck.ai متاح دائماً كـ Fallback
     configured.append("duckai")
 
-    # 2. الحصول على الترتيب الأمثل والأسلوب الأسرع
+    # 2. الحصول على الترتيب الأمثل
     optimal_order = router.get_optimal_order(configured)
 
-    # 3. التجربة حسب الترتيب الديناميكي
+    # 3. التجربة حسب الترتيب
     for provider in optimal_order:
-        if provider == "gemini" and gemini_key:
-            try:
-                res = await _try_gemini(user_message, history, system_prompt, gemini_key)
-                router.record_success("gemini", res.response_time_ms)
-                return res
-            except asyncio.TimeoutError:
-                msg = f"Gemini: Timeout exceeded ({GEMINI_TIMEOUT_SECONDS}s)"
-                errors.append(msg)
-                router.record_failure("gemini", is_rate_limit=False)
-                print(f"[SMART ROUTER] {msg} -> Switching dynamically...")
-            except Exception as e:
-                msg = f"Gemini: {type(e).__name__}: {e}"
-                errors.append(msg)
-                is_429 = "429" in str(e) or "ResourceExhausted" in str(e)
-                router.record_failure("gemini", is_rate_limit=is_429)
-                print(f"[SMART ROUTER] {msg} -> Switching dynamically...")
-
-        elif provider == "nvidia" and nvidia_key:
-            try:
-                res = await _try_nvidia(user_message, history, system_prompt, nvidia_key)
-                router.record_success("nvidia", res.response_time_ms)
-                return res
-            except asyncio.TimeoutError:
-                msg = "NVIDIA NIM: Timeout exceeded"
-                errors.append(msg)
-                router.record_failure("nvidia", is_rate_limit=False)
-                print(f"[SMART ROUTER] {msg} -> Switching dynamically...")
-            except Exception as e:
-                msg = f"NVIDIA NIM: {type(e).__name__}: {e}"
-                errors.append(msg)
-                is_429 = "429" in str(e) or "rate" in str(e).lower()
-                router.record_failure("nvidia", is_rate_limit=is_429)
-                print(f"[SMART ROUTER] {msg} -> Switching dynamically...")
-
-        elif provider == "seekai" and seekai_key:
+        if provider == "seekai" and seekai_key:
             try:
                 res = await _try_seekai(
                     user_message, history, system_prompt,
@@ -528,17 +461,34 @@ async def get_ai_response(
                 return res
             except asyncio.TimeoutError:
                 label = seekai_model or "default"
-                msg = f"SeekAI ({label}): Timeout exceeded ({SEEKAI_TIMEOUT_SECONDS}s)"
+                msg = f"SeekAI ({label}): Timeout ({SEEKAI_TIMEOUT_SECONDS}s)"
                 errors.append(msg)
                 router.record_failure("seekai", is_rate_limit=False)
-                print(f"[SMART ROUTER] {msg} -> Switching dynamically...")
+                print(f"[SMART ROUTER] {msg} -> Switching to Gemini...")
             except Exception as e:
                 label = seekai_model or "default"
                 msg = f"SeekAI ({label}): {type(e).__name__}: {e}"
                 errors.append(msg)
                 is_429 = "429" in str(e) or "limit" in str(e).lower()
                 router.record_failure("seekai", is_rate_limit=is_429)
-                print(f"[SMART ROUTER] {msg} -> Switching dynamically...")
+                print(f"[SMART ROUTER] {msg} -> Switching to Gemini...")
+
+        elif provider == "gemini" and gemini_key:
+            try:
+                res = await _try_gemini(user_message, history, system_prompt, gemini_key)
+                router.record_success("gemini", res.response_time_ms)
+                return res
+            except asyncio.TimeoutError:
+                msg = f"Gemini: Timeout ({GEMINI_TIMEOUT_SECONDS}s)"
+                errors.append(msg)
+                router.record_failure("gemini", is_rate_limit=False)
+                print(f"[SMART ROUTER] {msg} -> Switching...")
+            except Exception as e:
+                msg = f"Gemini: {type(e).__name__}: {e}"
+                errors.append(msg)
+                is_429 = "429" in str(e) or "ResourceExhausted" in str(e)
+                router.record_failure("gemini", is_rate_limit=is_429)
+                print(f"[SMART ROUTER] {msg} -> Switching...")
 
         elif provider == "duckai":
             try:
