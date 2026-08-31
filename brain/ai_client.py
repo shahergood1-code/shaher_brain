@@ -25,6 +25,16 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+# ─── NVIDIA NIM Available Models ────────────────────────────────────
+NVIDIA_MODELS: dict[str, str] = {
+    "default":          os.getenv("NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct"),
+    "llama":            "meta/llama-3.2-11b-vision-instruct",
+    "nemotron":         "nvidia/nemotron-3.5-lightning-30b-a3b",
+    "llama-3.2-11b":    "meta/llama-3.2-11b-vision-instruct",
+    "nemotron-3.5":     "nvidia/nemotron-3.5-lightning-30b-a3b",
+}
+
+
 # ─── SeekAI Available Models ────────────────────────────────────────
 # كل الموديلات دي بتشتغل بنفس SeekAI API key — مفتاح واحد، خيارات كتيرة
 SEEKAI_MODELS: dict[str, str] = {
@@ -248,7 +258,7 @@ async def _try_nvidia(
 
     start = time.time()
     base_url = "https://integrate.api.nvidia.com/v1"
-    model_name = model or os.getenv("NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct")
+    model_name = NVIDIA_MODELS.get(model or "default", model or NVIDIA_MODELS["default"])
 
     client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=12.0)
     messages = _build_messages(user_message, history, system_prompt)
