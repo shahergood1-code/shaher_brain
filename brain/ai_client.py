@@ -348,7 +348,57 @@ async def _try_duckai(
     )
 
 
-# --- Main: Fallback Chain ---
+# ─── Smart Adaptive AI Router (Health & Latency Ranker) ────────────
+
+class SmartAIRouter:
+    """
+    نظام ذكي لتقييم سرعة وصحة المزودين ديناميكياً:
+    - يختار أسرع وأصح مزود في الوقت الفعلي
+    - يضع المزود الذي يواجه 429 أو خطأ في فترة Cooldown لتجنب تضييع الوقت
+    - يحدّث متوسط السرعة بعد كل استجابة ناجحة
+    """
+    def __init__(self):
+        self.stats = {
+            "gemini":  {"avg_latency": 1500, "fails": 0, "cooldown_until": 0, "tier": 1},
+            "nvidia":  {"avg_latency": 1200, "fails": 0, "cooldown_until": 0, "tier": 1},
+            "seekai":  {"avg_latency": 4000, "fails": 0, "cooldown_until": 0, "tier": 2},
+            "duckai":  {"avg_latency": 6000, "fails": 0, "cooldown_until": 0, "tier": 3},
+        }
+
+    def record_success(self, provider: str, latency_ms: int):
+        if provider in self.stats:
+            p = self.stats[provider]
+            # Rolling exponential average
+            p["avg_latency"] = int(p["avg_latency"] * 0.6 + latency_ms * 0.4)
+            p["fails"] = 0
+            p["cooldown_until"] = 0
+
+    def record_failure(self, provider: str, is_rate_limit: bool = False):
+        if provider in self.stats:
+            p = self.stats[provider]
+            p["fails"] += 1
+            # Cooldown: 60 ثانية لـ RateLimit، و 25 ثانية للأخطاء الأخرى
+            cooldown_secs = 60 if is_rate_limit else 25
+            p["cooldown_until"] = time.time() + cooldown_secs
+
+    def get_optimal_order(self, available_providers: list[str]) -> list[str]:
+        now = time.time()
+        scored = []
+        for prov in available_providers:
+            info = self.stats.get(prov, {"avg_latency": 5000, "cooldown_until": 0, "tier": 3})
+            in_cooldown = now < info["cooldown_until"]
+            # معيار الترتيب: Cooldown أولاً ثم السرعة
+            score = info["avg_latency"] + (100000 if in_cooldown else 0)
+            scored.append((prov, score))
+        scored.sort(key=lambda x: x[1])
+        return [x[0] for x in scored]
+
+
+# كائن الراوتر العام
+router = SmartAIRouter()
+
+
+# --- Main: Fallback Chain (Dynamic Smart Router) ---
 
 async def get_ai_response(
     user_message: str,
@@ -357,11 +407,10 @@ async def get_ai_response(
     seekai_model: str | None = None,
 ) -> AIResponse:
     """
-    الدالة الرئيسية — بتجرب المصادر بالترتيب وتنتقل تلقائيًا وسريعاً عند التأخر أو الفشل:
-      1. Gemini Official
-      2. NVIDIA NIM (Llama 3.2 فائق السرعة)
-      3. SeekAI
-      4. Duck.ai
+    الدالة الرئيسية — تختار ديناميكياً أسرع وأفضل مزود في الوقت الفعلي:
+      - تفحص المزودين المتاحين
+      - ترتبهم حسب السرعة الفعلية والصحة
+      - تنفذ وتحدث الإحصائيات فوراً
     """
     if context is None:
         context = {}
@@ -370,63 +419,100 @@ async def get_ai_response(
     history = context.get("recent_messages", [])
     errors = []
 
-    # -- المصدر 1: Gemini Official (افتراضي دايمًا مع مهلة سريعة) --
+    # 1. تحديد المزودين المهيئين بـ API Keys
+    configured = []
     gemini_key = (
         os.getenv(f"GEMINI_API_KEY_{component.upper()}")
         or os.getenv("GEMINI_API_KEY_BRAIN")
     )
     if gemini_key:
-        try:
-            return await _try_gemini(user_message, history, system_prompt, gemini_key)
-        except asyncio.TimeoutError:
-            error_msg = f"Gemini: Timeout exceeded ({GEMINI_TIMEOUT_SECONDS}s)"
-            errors.append(error_msg)
-            print(f"[WARN] {error_msg} -- Fast switching to NVIDIA NIM...")
-        except Exception as e:
-            error_msg = f"Gemini: {type(e).__name__}: {e}"
-            errors.append(error_msg)
-            print(f"[WARN] {error_msg} -- trying NVIDIA NIM...")
+        configured.append("gemini")
 
-    # -- المصدر 2: NVIDIA NIM (Llama 3.2 فائق السرعة) --
     nvidia_key = os.getenv("NVIDIA_API_KEY")
     if nvidia_key:
-        try:
-            return await _try_nvidia(user_message, history, system_prompt, nvidia_key)
-        except asyncio.TimeoutError:
-            error_msg = "NVIDIA NIM: Timeout exceeded"
-            errors.append(error_msg)
-            print(f"[WARN] {error_msg} -- trying SeekAI...")
-        except Exception as e:
-            error_msg = f"NVIDIA NIM: {type(e).__name__}: {e}"
-            errors.append(error_msg)
-            print(f"[WARN] {error_msg} -- trying SeekAI...")
+        configured.append("nvidia")
 
-    # -- المصدر 3: SeekAI --
     seekai_key = os.getenv("SEEKAI_API_KEY")
     if seekai_key:
-        try:
-            return await _try_seekai(
-                user_message, history, system_prompt,
-                seekai_key, model=seekai_model,
-            )
-        except asyncio.TimeoutError:
-            label = seekai_model or "default"
-            error_msg = f"SeekAI ({label}): Timeout exceeded ({SEEKAI_TIMEOUT_SECONDS}s)"
-            errors.append(error_msg)
-            print(f"[WARN] {error_msg} -- Fast switching to Duck.ai...")
-        except Exception as e:
-            label = seekai_model or "default"
-            error_msg = f"SeekAI ({label}): {type(e).__name__}: {e}"
-            errors.append(error_msg)
-            print(f"[WARN] {error_msg} -- trying Duck.ai...")
+        configured.append("seekai")
 
-    # -- المصدر 4: Duck.ai --
-    try:
-        return await _try_duckai(user_message, history, system_prompt)
-    except asyncio.TimeoutError:
-        errors.append(f"Duck.ai: Timeout exceeded ({DUCKAI_TIMEOUT_SECONDS}s)")
-    except Exception as e:
-        errors.append(f"Duck.ai: {type(e).__name__}: {e}")
+    # Duck.ai متاح دائماً كـ Fallback بدون مفتاح
+    configured.append("duckai")
+
+    # 2. الحصول على الترتيب الأمثل والأسلوب الأسرع
+    optimal_order = router.get_optimal_order(configured)
+
+    # 3. التجربة حسب الترتيب الديناميكي
+    for provider in optimal_order:
+        if provider == "gemini" and gemini_key:
+            try:
+                res = await _try_gemini(user_message, history, system_prompt, gemini_key)
+                router.record_success("gemini", res.response_time_ms)
+                return res
+            except asyncio.TimeoutError:
+                msg = f"Gemini: Timeout exceeded ({GEMINI_TIMEOUT_SECONDS}s)"
+                errors.append(msg)
+                router.record_failure("gemini", is_rate_limit=False)
+                print(f"[SMART ROUTER] {msg} -> Switching dynamically...")
+            except Exception as e:
+                msg = f"Gemini: {type(e).__name__}: {e}"
+                errors.append(msg)
+                is_429 = "429" in str(e) or "ResourceExhausted" in str(e)
+                router.record_failure("gemini", is_rate_limit=is_429)
+                print(f"[SMART ROUTER] {msg} -> Switching dynamically...")
+
+        elif provider == "nvidia" and nvidia_key:
+            try:
+                res = await _try_nvidia(user_message, history, system_prompt, nvidia_key)
+                router.record_success("nvidia", res.response_time_ms)
+                return res
+            except asyncio.TimeoutError:
+                msg = "NVIDIA NIM: Timeout exceeded"
+                errors.append(msg)
+                router.record_failure("nvidia", is_rate_limit=False)
+                print(f"[SMART ROUTER] {msg} -> Switching dynamically...")
+            except Exception as e:
+                msg = f"NVIDIA NIM: {type(e).__name__}: {e}"
+                errors.append(msg)
+                is_429 = "429" in str(e) or "rate" in str(e).lower()
+                router.record_failure("nvidia", is_rate_limit=is_429)
+                print(f"[SMART ROUTER] {msg} -> Switching dynamically...")
+
+        elif provider == "seekai" and seekai_key:
+            try:
+                res = await _try_seekai(
+                    user_message, history, system_prompt,
+                    seekai_key, model=seekai_model,
+                )
+                router.record_success("seekai", res.response_time_ms)
+                return res
+            except asyncio.TimeoutError:
+                label = seekai_model or "default"
+                msg = f"SeekAI ({label}): Timeout exceeded ({SEEKAI_TIMEOUT_SECONDS}s)"
+                errors.append(msg)
+                router.record_failure("seekai", is_rate_limit=False)
+                print(f"[SMART ROUTER] {msg} -> Switching dynamically...")
+            except Exception as e:
+                label = seekai_model or "default"
+                msg = f"SeekAI ({label}): {type(e).__name__}: {e}"
+                errors.append(msg)
+                is_429 = "429" in str(e) or "limit" in str(e).lower()
+                router.record_failure("seekai", is_rate_limit=is_429)
+                print(f"[SMART ROUTER] {msg} -> Switching dynamically...")
+
+        elif provider == "duckai":
+            try:
+                res = await _try_duckai(user_message, history, system_prompt)
+                router.record_success("duckai", res.response_time_ms)
+                return res
+            except asyncio.TimeoutError:
+                msg = f"Duck.ai: Timeout ({DUCKAI_TIMEOUT_SECONDS}s)"
+                errors.append(msg)
+                router.record_failure("duckai", is_rate_limit=False)
+            except Exception as e:
+                msg = f"Duck.ai: {type(e).__name__}: {e}"
+                errors.append(msg)
+                router.record_failure("duckai", is_rate_limit=False)
 
     # -- كل المصادر فشلت --
     return AIResponse(
