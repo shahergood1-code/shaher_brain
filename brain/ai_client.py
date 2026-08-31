@@ -29,31 +29,24 @@ load_dotenv()
 # كل الموديلات دي بتشتغل بنفس SeekAI API key — مفتاح واحد، خيارات كتيرة
 SEEKAI_MODELS: dict[str, str] = {
     # الموديل الافتراضي — بيتقرأه من .env
-    "default":          os.getenv("SEEKAI_MODEL", "gemini-1.5-flash"),
+    "default":          os.getenv("SEEKAI_MODEL", "glm-5.3-flash"),
 
     # ── أسماء مختصرة (shortcuts) ──
-    "claude":           "claude-sonnet-5",
-    "claude-opus":      "claude-opus-5",
-    "claude-fable":     "claude-fable-5",
-    "gpt":              "gpt-5.6-sol",
-    "gemini":           "gemini-3-6-flash",
-    "deepseek":         "deepseek-v4-pro",
-    "grok":             "grok-4-6",
+    "glm":              "glm-5.3-flash",
+    "deepseek":         "deepseek-v4-flash",
     "kimi":             "kimi-k3",
-    "glm":              "glm-5-2",
     "mimo":             "mimo-v2.5",
+    "gemini":           "gemini-3-6-flash",
+    "gpt":              "gpt-5.6-sol",
+    "claude":           "claude-sonnet-5",
 
     # ── أسماء كاملة (exact model names) ──
-    "claude-sonnet-5":  "claude-sonnet-5",
-    "claude-opus-5":    "claude-opus-5",
-    "claude-fable-5":   "claude-fable-5",
-    "gpt-5.6-sol":      "gpt-5.6-sol",
-    "gemini-3-6-flash": "gemini-3-6-flash",
-    "deepseek-v4-pro":  "deepseek-v4-pro",
-    "grok-4-6":         "grok-4-6",
+    "glm-5.3-flash":    "glm-5.3-flash",
+    "deepseek-v4-flash":"deepseek-v4-flash",
     "kimi-k3":          "kimi-k3",
-    "glm-5-2":          "glm-5-2",
     "mimo-v2.5":        "mimo-v2.5",
+    "gemini-3-6-flash": "gemini-3-6-flash",
+    "gpt-5.6-sol":      "gpt-5.6-sol",
 }
 
 
