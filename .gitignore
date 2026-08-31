@@ -1,0 +1,44 @@
+# شاهر الثاني — .gitignore
+
+# ⚠️ الملف ده أهم ملف في المشروع — لا تشيل .env أبدًا
+.env
+*.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# Vercel
+.vercel/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp
+tmp/
+temp/
+
+# Logs
+*.log
+logs/
