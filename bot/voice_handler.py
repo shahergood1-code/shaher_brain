@@ -66,11 +66,7 @@ async def _transcribe_with_gemini(audio_path: str, api_key: str) -> str | None:
         import google.generativeai as genai
 
         genai.configure(api_key=api_key)
-        model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-        
-        # التأكد من صحة اسم الموديل الرسمي
-        if "3.6" in model_name:
-            model_name = "gemini-1.5-flash"
+        model_name = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 
         # قراءة بايتس الملف مباشرة بدون الحاجة لرفع وحذف منفصل
         with open(audio_path, "rb") as f:

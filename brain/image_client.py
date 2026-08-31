@@ -196,9 +196,7 @@ async def _enhance_prompt(prompt_text: str, format_type: str = "default") -> str
             import google.generativeai as genai
             import asyncio
             genai.configure(api_key=gemini_key)
-            model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-            if "3.6" in model_name:
-                model_name = "gemini-1.5-flash"
+            model_name = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
             m = genai.GenerativeModel(model_name)
             
             prompt_instruction = (
@@ -218,7 +216,7 @@ async def _enhance_prompt(prompt_text: str, format_type: str = "default") -> str
                     m.generate_content,
                     f"{prompt_instruction}\n\nUser Concept: {prompt_text}"
                 ),
-                timeout=6.0
+                timeout=12.0
             )
             if resp and resp.text:
                 cleaned = resp.text.strip().replace('"', '').replace('`', '').replace('\n', ' ')
