@@ -234,14 +234,91 @@ async def _try_seekai(
     )
 
 
-# ─── Source 3: Duck.ai ────────────────────────────────────
+# ─── Source 2: NVIDIA NIM (فائق السرعة والاستقرار) ──────────────────────────
+
+async def _try_nvidia(
+    user_message: str,
+    history: list[dict],
+    system_prompt: str,
+    api_key: str,
+    model: str | None = None,
+) -> AIResponse:
+    """NVIDIA NIM — مصدر فائق السرعة والاستقرار عبر نماذج Llama الحديثة."""
+    from openai import AsyncOpenAI
+
+    start = time.time()
+    base_url = "https://integrate.api.nvidia.com/v1"
+    model_name = model or os.getenv("NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct")
+
+    client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=12.0)
+    messages = _build_messages(user_message, history, system_prompt)
+
+    response = await asyncio.wait_for(
+        client.chat.completions.create(
+            model=model_name,
+            messages=messages,
+            max_tokens=2048,
+        ),
+        timeout=12.0
+    )
+
+    elapsed = int((time.time() - start) * 1000)
+    return AIResponse(
+        content=response.choices[0].message.content or "",
+        source="nvidia_nim",
+        model=model_name,
+        response_time_ms=elapsed,
+        tokens_used=response.usage.total_tokens if response.usage else None,
+    )
+
+
+# ─── Source 3: SeekAI ──────────────────────────────────────────────
+
+async def _try_seekai(
+    user_message: str,
+    history: list[dict],
+    system_prompt: str,
+    api_key: str,
+    model: str | None = None,
+) -> AIResponse:
+    """SeekAI Aggregator — fallback أول (OpenAI-compatible endpoint)."""
+    from openai import AsyncOpenAI
+
+    start = time.time()
+    base_url = os.getenv("SEEKAI_BASE_URL", "https://seekai.cc/v1")
+    # لو محددش موديل: بيختار من SEEKAI_MODELS، لو مش موجود يرجع للافتراضي
+    model_name = SEEKAI_MODELS.get(model or "default", model or SEEKAI_MODELS["default"])
+
+    client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=SEEKAI_TIMEOUT_SECONDS)
+    messages = _build_messages(user_message, history, system_prompt)
+
+    response = await asyncio.wait_for(
+        client.chat.completions.create(
+            model=model_name,
+            messages=messages,
+            max_tokens=2048,
+        ),
+        timeout=SEEKAI_TIMEOUT_SECONDS
+    )
+
+    elapsed = int((time.time() - start) * 1000)
+    return AIResponse(
+        content=response.choices[0].message.content or "",
+        source="seekai",
+        model=model_name,
+        response_time_ms=elapsed,
+        tokens_used=response.usage.total_tokens if response.usage else None,
+    )
+
+
+# ─── Source 4: Duck.ai ────────────────────────────────────
 
 async def _try_duckai(
     user_message: str,
     history: list[dict],
     system_prompt: str,
 ) -> AIResponse:
-    """Duck.ai — fallback تاني، مجاني بدون API key."""
+    """Duck.ai — fallback إضافي، مجاني بدون API key."""
     from duckduckgo_search import DDGS
 
     start = time.time()
@@ -280,13 +357,11 @@ async def get_ai_response(
     seekai_model: str | None = None,
 ) -> AIResponse:
     """
-    الدالة الرئيسية — بتجرب المصادر بالترتيب وتنتقل تلقائيًا وسريعاً عند التأخر أو الفشل.
-
-    Args:
-        user_message:  رسالة المستخدم
-        context:       النتيجة من get_full_context()
-        component:     اسم المكون (عشان API key منفصل لكل مكون)
-        seekai_model:  موديل SeekAI محدد لو Gemini فشل
+    الدالة الرئيسية — بتجرب المصادر بالترتيب وتنتقل تلقائيًا وسريعاً عند التأخر أو الفشل:
+      1. Gemini Official
+      2. NVIDIA NIM (Llama 3.2 فائق السرعة)
+      3. SeekAI
+      4. Duck.ai
     """
     if context is None:
         context = {}
@@ -306,15 +381,27 @@ async def get_ai_response(
         except asyncio.TimeoutError:
             error_msg = f"Gemini: Timeout exceeded ({GEMINI_TIMEOUT_SECONDS}s)"
             errors.append(error_msg)
-            label = seekai_model or "default"
-            print(f"[WARN] {error_msg} -- Fast switching to SeekAI ({label})...")
+            print(f"[WARN] {error_msg} -- Fast switching to NVIDIA NIM...")
         except Exception as e:
             error_msg = f"Gemini: {type(e).__name__}: {e}"
             errors.append(error_msg)
-            label = seekai_model or "default"
-            print(f"[WARN] {error_msg} -- trying SeekAI ({label})...")
+            print(f"[WARN] {error_msg} -- trying NVIDIA NIM...")
 
-    # -- المصدر 2: SeekAI (بالموديل المحدد أو الافتراضي) --
+    # -- المصدر 2: NVIDIA NIM (Llama 3.2 فائق السرعة) --
+    nvidia_key = os.getenv("NVIDIA_API_KEY")
+    if nvidia_key:
+        try:
+            return await _try_nvidia(user_message, history, system_prompt, nvidia_key)
+        except asyncio.TimeoutError:
+            error_msg = "NVIDIA NIM: Timeout exceeded"
+            errors.append(error_msg)
+            print(f"[WARN] {error_msg} -- trying SeekAI...")
+        except Exception as e:
+            error_msg = f"NVIDIA NIM: {type(e).__name__}: {e}"
+            errors.append(error_msg)
+            print(f"[WARN] {error_msg} -- trying SeekAI...")
+
+    # -- المصدر 3: SeekAI --
     seekai_key = os.getenv("SEEKAI_API_KEY")
     if seekai_key:
         try:
@@ -333,7 +420,7 @@ async def get_ai_response(
             errors.append(error_msg)
             print(f"[WARN] {error_msg} -- trying Duck.ai...")
 
-    # -- المصدر 3: Duck.ai --
+    # -- المصدر 4: Duck.ai --
     try:
         return await _try_duckai(user_message, history, system_prompt)
     except asyncio.TimeoutError:
