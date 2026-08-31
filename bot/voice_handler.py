@@ -60,39 +60,63 @@ async def transcribe_voice(
 async def _transcribe_with_gemini(audio_path: str, api_key: str) -> str | None:
     """
     بيستخدم Gemini multimodal API لتحويل الصوت لنص.
-    Gemini 1.5 Flash/Pro بيدعم audio input مباشرة.
+    Gemini 1.5 Flash / 2.0 Flash يدعمان إدخال الصوت مباشرة وبسرعة فائقة.
     """
     try:
         import google.generativeai as genai
 
         genai.configure(api_key=api_key)
+        model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+        
+        # التأكد من صحة اسم الموديل الرسمي
+        if "3.6" in model_name:
+            model_name = "gemini-1.5-flash"
 
-        # رفع الملف لـ Gemini Files API
-        audio_file = await asyncio.to_thread(
-            genai.upload_file,
-            path=audio_path,
-            mime_type="audio/ogg",
+        # قراءة بايتس الملف مباشرة بدون الحاجة لرفع وحذف منفصل
+        with open(audio_path, "rb") as f:
+            audio_bytes = f.read()
+
+        model = genai.GenerativeModel(model_name)
+
+        prompt = (
+            "You are a speech-to-text transcription engine. "
+            "Transcribe the spoken audio verbatim into accurate Arabic or English as spoken. "
+            "Do NOT add any explanation, prefix, quotes, or commentary. Output ONLY the exact transcribed text."
         )
 
-        model = genai.GenerativeModel("gemini-3.6-flash")
-
-        response = await asyncio.to_thread(
-            model.generate_content,
-            [
-                audio_file,
-                "حوّل الكلام الموجود في الملف الصوتي ده لنص مكتوب بدقة. "
-                "مش محتاج تضيف أي تعليق، بس النص الحرفي.",
-            ],
+        response = await asyncio.wait_for(
+            asyncio.to_thread(
+                model.generate_content,
+                [
+                    {"mime_type": "audio/ogg", "data": audio_bytes},
+                    prompt,
+                ]
+            ),
+            timeout=10.0
         )
 
-        # حذف الملف من Gemini بعد الاستخدام
-        try:
-            await asyncio.to_thread(genai.delete_file, audio_file.name)
-        except Exception:
-            pass
-
-        return response.text.strip() if response.text else None
+        if response and response.text:
+            text = response.text.strip()
+            return text if text else None
 
     except Exception as e:
-        print(f"⚠️ فشل Gemini transcription: {e}")
-        return None
+        print(f"⚠️ فشل Gemini transcription ({type(e).__name__}): {e}")
+
+    # Fallback to SeekAI / Whisper if available
+    seekai_key = os.getenv("SEEKAI_API_KEY")
+    if seekai_key:
+        try:
+            from openai import AsyncOpenAI
+            base_url = os.getenv("SEEKAI_BASE_URL", "https://api.seekai.tools/v1")
+            client = AsyncOpenAI(api_key=seekai_key, base_url=base_url)
+            with open(audio_path, "rb") as audio_file:
+                transcript = await client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_file,
+                )
+                if transcript and transcript.text:
+                    return transcript.text.strip()
+        except Exception as e:
+            print(f"⚠️ فشل SeekAI whisper fallback: {e}")
+
+    return None

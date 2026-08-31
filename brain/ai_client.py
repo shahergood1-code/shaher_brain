@@ -167,7 +167,9 @@ async def _try_gemini(
 
     start = time.time()
     genai.configure(api_key=api_key)
-    model_name = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+    model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+    if "3.6" in model_name:
+        model_name = "gemini-1.5-flash"
     model = genai.GenerativeModel(
         model_name=model_name,
         system_instruction=system_prompt,

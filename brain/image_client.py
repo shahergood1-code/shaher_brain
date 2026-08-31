@@ -196,7 +196,9 @@ async def _enhance_prompt(prompt_text: str, format_type: str = "default") -> str
             import google.generativeai as genai
             import asyncio
             genai.configure(api_key=gemini_key)
-            model_name = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+            model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+            if "3.6" in model_name:
+                model_name = "gemini-1.5-flash"
             m = genai.GenerativeModel(model_name)
             
             prompt_instruction = (
