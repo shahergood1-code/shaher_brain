@@ -110,6 +110,14 @@ def _build_system_prompt(ctx: dict) -> str:
             prompt += f"- **{d['title']}**: {d['decision']}\n"
         prompt += "\n"
 
+    # ── ما تم تعلمه ذاتياً عن شاهر وتفضيلاته وتوجيهاته ──
+    learned_items = [v for k, v in prefs.items() if k.startswith("learned_") and v]
+    if learned_items:
+        prompt += "## دروس ومعارف تعلمتها عن شاهر وتفضيلاته السابقة (تطبيق إلزامي دائم):\n"
+        for item in learned_items:
+            prompt += f"- {item}\n"
+        prompt += "\n"
+
     # ── تعليمات التفاعل ──
     prompt += f"""## كيف تتفاعل:
 - لو السؤال عام (علم، تكنولوجيا، رأي، أي حاجة): جاوب مباشرة بعمق واهتمام

@@ -185,7 +185,7 @@ async def handle_update(update_data: dict, bot: Bot) -> None:
         # لو فيه حاجة في التنسيق غلط، نبعت plain text
         await bot.send_message(chat_id=chat_id, text=response_to_send)
 
-    # ── تسجيل التفاعل في Supabase في الخلفية ──
+    # ── تسجيل التفاعل في Supabase والتعلم الذاتي في الخلفية ──
     asyncio.create_task(
         log_interaction(
             user_message=user_text,
@@ -200,3 +200,10 @@ async def handle_update(update_data: dict, bot: Bot) -> None:
             error_details=ai_result.error,
         )
     )
+    
+    # ── محرك التعلّم الذاتي والتطور المستمر ──
+    try:
+        from memory.learning_engine import auto_learn_from_interaction
+        asyncio.create_task(auto_learn_from_interaction(user_text, ai_result.content))
+    except Exception:
+        pass
