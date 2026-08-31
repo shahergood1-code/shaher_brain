@@ -363,6 +363,50 @@ async def _try_seekai(
     raise last_err or Exception("All SeekAI models failed")
 
 
+# ─── Source 3: Duck.ai (Fallback إضافي مجاني) ───────────────────────────
+
+async def _try_duckai(
+    user_message: str,
+    history: list[dict],
+    system_prompt: str,
+) -> AIResponse:
+    """Duck.ai — fallback إضافي، مجاني بدون API key."""
+    from duckduckgo_search import DDGS
+
+    start = time.time()
+
+    context_text = ""
+    for item in history[-4:]:
+        if item.get("user_message"):
+            context_text += f"User: {item['user_message']}\n"
+        if item.get("ai_response"):
+            context_text += f"Assistant: {item['ai_response']}\n"
+
+    full_prompt = f"{system_prompt}\n\n{context_text}User: {user_message}"
+
+    def _sync_chat():
+        try:
+            return next(DDGS().chat(full_prompt, model="gpt-4o-mini"), "")
+        except Exception:
+            return ""
+
+    response_text = await asyncio.wait_for(
+        asyncio.to_thread(_sync_chat),
+        timeout=DUCKAI_TIMEOUT_SECONDS
+    )
+
+    if not response_text:
+        raise Exception("Duck.ai returned empty response")
+
+    elapsed = int((time.time() - start) * 1000)
+    return AIResponse(
+        content=response_text,
+        source="duckai",
+        model="gpt-4o-mini (duck.ai)",
+        response_time_ms=elapsed,
+    )
+
+
 # ─── Smart Adaptive AI Router (Health & Latency Ranker) ────────────
 
 class SmartAIRouter:
