@@ -120,7 +120,6 @@ async def handle_update(update_data: dict, bot: Bot) -> None:
         await bot.send_chat_action(chat_id=chat_id, action=ChatAction.UPLOAD_PHOTO)
         img_result = await generate_image(
             prompt=user_text,
-            format_type="default",
         )
         if img_result.error or not img_result.image_url:
             await bot.send_message(
@@ -129,7 +128,7 @@ async def handle_update(update_data: dict, bot: Bot) -> None:
                 parse_mode="Markdown",
             )
         else:
-            caption = f"🎨 *{img_result.model_used}*\n_{user_text[:100]}_"
+            caption = f"🎨 *{img_result.model_used}* ({img_result.size})\n_{user_text[:100]}_"
             try:
                 await bot.send_photo(
                     chat_id=chat_id,
@@ -141,12 +140,12 @@ async def handle_update(update_data: dict, bot: Bot) -> None:
                 # لو الـ URL انتهت صلاحيته، نبعت الرابط كنص
                 await bot.send_message(
                     chat_id=chat_id,
-                    text=f"🎨 الصورة جاهزة:\n{img_result.image_url}",
+                    text=f"🎨 الصورة جاهزة ({img_result.size}):\n{img_result.image_url}",
                 )
         await log_interaction(
             user_message=user_text,
             ai_response=img_result.image_url or img_result.error or "",
-            ai_source="seekai_image",
+            ai_source="image_gen",
             ai_model=img_result.model_used,
             message_type=message_type,
             telegram_user_id=user_id,
