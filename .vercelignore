@@ -1,0 +1,10 @@
+# Files to ignore during Vercel deployment to keep function bundle small
+workspace/
+workers/
+.git
+*.mp4
+*.mp3
+*.wav
+*.png
+*.jpg
+*.bat
