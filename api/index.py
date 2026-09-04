@@ -29,6 +29,22 @@ app = FastAPI(
     redoc_url=None,
 )
 
+from fastapi.responses import JSONResponse
+from fastapi import Request
+
+@app.exception_handler(Exception)
+async def api_global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": "error_handled",
+            "error_type": type(exc).__name__,
+            "message": str(exc),
+            "traceback": traceback.format_exc(),
+        }
+    )
+
 # محاولة تحميل المسارات والمنظومة بالكامل
 try:
     from bot.main import (

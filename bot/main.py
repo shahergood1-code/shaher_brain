@@ -46,6 +46,22 @@ app = FastAPI(
 )
 
 
+# ── Global Exception Handler (Never return generic 500) ────
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": "error_handled",
+            "error_type": type(exc).__name__,
+            "message": str(exc),
+            "traceback": traceback.format_exc(),
+        }
+    )
+
+
 # ── Root Welcome Endpoint ─────────────────────────────────
 @app.get("/")
 async def root():
