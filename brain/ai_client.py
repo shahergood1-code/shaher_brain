@@ -1,12 +1,13 @@
 """
 brain/ai_client.py
 ──────────────────
-Fallback AI Chain لشاهر الثاني.
+Fallback AI Chain & Multi-Model Engine لشاهر الثاني.
 
-ترتيب المحاولة:
-  1. Gemini Official API (google-generativeai) — المصدر الرسمي الموثوق
-  2. SeekAI Aggregator (OpenAI-compatible) — fallback أول
-  3. Duck.ai via duckduckgo-search — fallback تاني (مجاني، بدون key)
+المصادر المدعومة وترتيب الأولوية الذكي:
+  1. Ollama Local (qwen2.5:7b) — تشغيل محلي فائق السرعة عبر كرت RTX 4070 وبدون إنترنت
+  2. SeekAI Aggregator (glm-5.3-flash, kimi-k3, deepseek-v4-flash, claude, gpt) — فصاحة وجودة لغوية عالية
+  3. Gemini Official API (google-generativeai: gemini-1.5-flash / gemini-2.0-flash)
+  4. NVIDIA NIM (meta/llama-3.2-11b-vision-instruct, nemotron)
 
 الفرق عن ChatGPT/Claude:
   شاهر بيبني System Prompt ديناميكي قبل كل رسالة —
@@ -23,6 +24,19 @@ from dataclasses import dataclass
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+# ─── Ollama Available Models (تشغيل محلي مسرع بـ RTX 4070) ───────────
+OLLAMA_MODELS: dict[str, str] = {
+    "default":          os.getenv("OLLAMA_MODEL", "qwen2.5:7b"),
+    "qwen":             "qwen2.5:7b",
+    "qwen2.5":          "qwen2.5:7b",
+    "qwen-7b":          "qwen2.5:7b",
+    "llama":            "llama3.2:latest",
+    "llama3":           "llama3.2:latest",
+    "mistral":          "mistral:latest",
+    "deepseek":         "deepseek-r1:7b",
+}
 
 
 # ─── NVIDIA NIM Available Models ────────────────────────────────────
@@ -184,7 +198,7 @@ def _build_messages(user_message: str, history: list[dict], system: str) -> list
 # ─── Timeouts & Performance Settings ──────────────────────────────
 GEMINI_TIMEOUT_SECONDS = float(os.getenv("GEMINI_TIMEOUT", "7.0"))
 SEEKAI_TIMEOUT_SECONDS = float(os.getenv("SEEKAI_TIMEOUT", "30.0"))
-DUCKAI_TIMEOUT_SECONDS = float(os.getenv("DUCKAI_TIMEOUT", "9.0"))
+DUCKAI_TIMEOUT_SECONDS = float(os.getenv("DUCKAI_TIMEOUT", "4.5"))
 
 
 # ─── Source 1: Gemini Official ────────────────────────────
@@ -195,16 +209,19 @@ async def _try_gemini(
     system_prompt: str,
     api_key: str,
 ) -> AIResponse:
-    """Gemini Official API — المصدر الأساسي مع مهلة سريعة."""
+    """Gemini Official API — المصدر الأساسي مع مهلة سريعة وتصحيح الموديلات التلقائي."""
     import google.generativeai as genai
 
     start = time.time()
     genai.configure(api_key=api_key)
-    model_name = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
-    model = genai.GenerativeModel(
-        model_name=model_name,
-        system_instruction=system_prompt,
-    )
+
+    pref_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+    # لو كان الموديل مكتوب باسم غير صالح مثل gemini-3.6-flash يتم تصحيحه لـ 1.5-flash
+    if "3.6" in pref_model or "3-6" in pref_model:
+        pref_model = "gemini-1.5-flash"
+
+    candidate_models = [pref_model, "gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
+    models_to_try = list(dict.fromkeys(candidate_models))
 
     chat_history = []
     for item in history[-8:]:
@@ -213,103 +230,35 @@ async def _try_gemini(
         if item.get("ai_response"):
             chat_history.append({"role": "model", "parts": [item["ai_response"]]})
 
-    chat = model.start_chat(history=chat_history)
-    
-    # حماية بـ timeout صريح لمنع التعليق
-    response = await asyncio.wait_for(
-        asyncio.to_thread(chat.send_message, user_message),
-        timeout=GEMINI_TIMEOUT_SECONDS
-    )
+    last_err = None
+    for model_name in models_to_try:
+        try:
+            model = genai.GenerativeModel(
+                model_name=model_name,
+                system_instruction=system_prompt,
+            )
+            chat = model.start_chat(history=chat_history)
+            response = await asyncio.wait_for(
+                asyncio.to_thread(chat.send_message, user_message),
+                timeout=GEMINI_TIMEOUT_SECONDS,
+            )
+            elapsed = int((time.time() - start) * 1000)
+            return AIResponse(
+                content=response.text,
+                source="gemini",
+                model=model_name,
+                response_time_ms=elapsed,
+                tokens_used=(
+                    response.usage_metadata.total_token_count
+                    if hasattr(response, "usage_metadata") and response.usage_metadata
+                    else None
+                ),
+            )
+        except Exception as exc:
+            last_err = exc
+            print(f"[WARN] Gemini model '{model_name}' failed: {exc} -- trying next candidate...")
 
-    elapsed = int((time.time() - start) * 1000)
-    return AIResponse(
-        content=response.text,
-        source="gemini",
-        model=model_name,
-        response_time_ms=elapsed,
-        tokens_used=(
-            response.usage_metadata.total_token_count
-            if hasattr(response, "usage_metadata") and response.usage_metadata
-            else None
-        ),
-    )
-
-
-# ─── Source 2: SeekAI ──────────────────────────────────────────────
-
-async def _try_seekai(
-    user_message: str,
-    history: list[dict],
-    system_prompt: str,
-    api_key: str,
-    model: str | None = None,
-) -> AIResponse:
-    """SeekAI Aggregator — fallback أول (OpenAI-compatible endpoint)."""
-    from openai import AsyncOpenAI
-
-    start = time.time()
-    base_url = os.getenv("SEEKAI_BASE_URL", "https://api.seekai.tools/v1")
-    # لو محددش موديل: بيختار من SEEKAI_MODELS، لو مش موجود يرجع للافتراضي
-    model_name = SEEKAI_MODELS.get(model or "default", model or SEEKAI_MODELS["default"])
-
-    client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=SEEKAI_TIMEOUT_SECONDS)
-    messages = _build_messages(user_message, history, system_prompt)
-
-    response = await asyncio.wait_for(
-        client.chat.completions.create(
-            model=model_name,
-            messages=messages,
-            max_tokens=2048,
-        ),
-        timeout=SEEKAI_TIMEOUT_SECONDS
-    )
-
-    elapsed = int((time.time() - start) * 1000)
-    return AIResponse(
-        content=response.choices[0].message.content or "",
-        source="seekai",
-        model=model_name,
-        response_time_ms=elapsed,
-        tokens_used=response.usage.total_tokens if response.usage else None,
-    )
-
-
-# ─── Source 2: NVIDIA NIM (فائق السرعة والاستقرار) ──────────────────────────
-
-async def _try_nvidia(
-    user_message: str,
-    history: list[dict],
-    system_prompt: str,
-    api_key: str,
-    model: str | None = None,
-) -> AIResponse:
-    """NVIDIA NIM — مصدر فائق السرعة والاستقرار عبر نماذج Llama الحديثة."""
-    from openai import AsyncOpenAI
-
-    start = time.time()
-    base_url = "https://integrate.api.nvidia.com/v1"
-    model_name = NVIDIA_MODELS.get(model or "default", model or NVIDIA_MODELS["default"])
-
-    client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=12.0)
-    messages = _build_messages(user_message, history, system_prompt)
-
-    response = await asyncio.wait_for(
-        client.chat.completions.create(
-            model=model_name,
-            messages=messages,
-            max_tokens=2048,
-        ),
-        timeout=12.0
-    )
-
-    elapsed = int((time.time() - start) * 1000)
-    return AIResponse(
-        content=response.choices[0].message.content or "",
-        source="nvidia_nim",
-        model=model_name,
-        response_time_ms=elapsed,
-        tokens_used=response.usage.total_tokens if response.usage else None,
-    )
+    raise last_err or Exception("All Gemini candidate models failed")
 
 
 # ─── Source 2: SeekAI (المحرك الأساسي للذكاء العربي الفصيح) ────────────
@@ -363,16 +312,111 @@ async def _try_seekai(
     raise last_err or Exception("All SeekAI models failed")
 
 
-# ─── Source 3: Duck.ai (Fallback إضافي مجاني) ───────────────────────────
+# ─── Source 3: NVIDIA NIM (فائق السرعة والاستقرار) ──────────────────────────
+
+async def _try_nvidia(
+    user_message: str,
+    history: list[dict],
+    system_prompt: str,
+    api_key: str,
+    model: str | None = None,
+) -> AIResponse:
+    """NVIDIA NIM — مصدر فائق السرعة والاستقرار عبر نماذج Llama الحديثة."""
+    from openai import AsyncOpenAI
+
+    start = time.time()
+    base_url = "https://integrate.api.nvidia.com/v1"
+    model_name = NVIDIA_MODELS.get(model or "default", model or NVIDIA_MODELS["default"])
+
+    client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=12.0)
+    messages = _build_messages(user_message, history, system_prompt)
+
+    response = await asyncio.wait_for(
+        client.chat.completions.create(
+            model=model_name,
+            messages=messages,
+            max_tokens=2048,
+        ),
+        timeout=12.0
+    )
+
+    elapsed = int((time.time() - start) * 1000)
+    return AIResponse(
+        content=response.choices[0].message.content or "",
+        source="nvidia_nim",
+        model=model_name,
+        response_time_ms=elapsed,
+        tokens_used=response.usage.total_tokens if response.usage else None,
+    )
+
+
+# ─── Source 4: Ollama Local (العقل المحلي المسرع بـ RTX 4070) ───────────
+
+def is_ollama_online(host_url: str | None = None) -> bool:
+    """فحص سريع بـ socket للتأكد من تشغيل خادم Ollama في أقل من 50 مللي ثانية."""
+    import socket
+    from urllib.parse import urlparse
+    if not host_url:
+        host_url = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    try:
+        parsed = urlparse(host_url)
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or 11434
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(0.15)
+            return sock.connect_ex((host, port)) == 0
+    except Exception:
+        return False
+
+
+async def _try_ollama(
+    user_message: str,
+    history: list[dict],
+    system_prompt: str,
+    model: str | None = None,
+) -> AIResponse:
+    """Ollama Local API — تشغيل محلي فائق السرعة عبر كرت RTX 4070 وبدون إنترنت."""
+    import ollama
+
+    start = time.time()
+    host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    model_name = OLLAMA_MODELS.get(model or "default", model or os.getenv("OLLAMA_MODEL", "qwen2.5:7b"))
+
+    chat_msgs = [{"role": "system", "content": system_prompt}]
+    for item in history[-6:]:
+        if item.get("user_message"):
+            chat_msgs.append({"role": "user", "content": item["user_message"]})
+        if item.get("ai_response"):
+            chat_msgs.append({"role": "assistant", "content": item["ai_response"]})
+    chat_msgs.append({"role": "user", "content": user_message})
+
+    client = ollama.AsyncClient(host=host)
+    response = await asyncio.wait_for(
+        client.chat(model=model_name, messages=chat_msgs),
+        timeout=float(os.getenv("OLLAMA_TIMEOUT", "30.0")),
+    )
+
+    elapsed = int((time.time() - start) * 1000)
+    return AIResponse(
+        content=response["message"]["content"],
+        source="ollama",
+        model=model_name,
+        response_time_ms=elapsed,
+    )
+
+
+# ─── Source 5: Duck.ai (Fallback مجاني وبدون API Key) ───────────
 
 async def _try_duckai(
     user_message: str,
     history: list[dict],
     system_prompt: str,
+    model: str = "gpt-4o-mini",
 ) -> AIResponse:
-    """Duck.ai — fallback إضافي، مجاني بدون API key."""
-    from duckduckgo_search import DDGS
-
+    """
+    Duck.ai — مزود مجاني وبدون أي API keys عبر خدمة DuckDuckGo AI.
+    مزود بمهلة سريعة جداً (4.5 ثوانٍ) لمنع أي تعطيل في البوت.
+    """
     start = time.time()
 
     context_text = ""
@@ -384,25 +428,46 @@ async def _try_duckai(
 
     full_prompt = f"{system_prompt}\n\n{context_text}User: {user_message}"
 
-    def _sync_chat():
-        try:
-            return next(DDGS().chat(full_prompt, model="gpt-4o-mini"), "")
-        except Exception:
-            return ""
+    def _sync_call():
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            # محاولة 1: عبر حزمة duckai
+            try:
+                from duckai import DuckAI
+                client = DuckAI(timeout=int(DUCKAI_TIMEOUT_SECONDS))
+                res = client.chat(full_prompt, model=model)
+                if res and res.strip():
+                    return res.strip()
+            except Exception:
+                pass
+
+            # محاولة 2: عبر duckduckgo_search لو بها chat
+            try:
+                from duckduckgo_search import DDGS
+                ddgs = DDGS()
+                if hasattr(ddgs, "chat"):
+                    res = next(ddgs.chat(full_prompt, model=model), "")
+                    if res and res.strip():
+                        return res.strip()
+            except Exception:
+                pass
+
+        return ""
 
     response_text = await asyncio.wait_for(
-        asyncio.to_thread(_sync_chat),
-        timeout=DUCKAI_TIMEOUT_SECONDS
+        asyncio.to_thread(_sync_call),
+        timeout=DUCKAI_TIMEOUT_SECONDS,
     )
 
     if not response_text:
-        raise Exception("Duck.ai returned empty response")
+        raise Exception("Duck.ai returned empty response or rate limit/challenge active")
 
     elapsed = int((time.time() - start) * 1000)
     return AIResponse(
         content=response_text,
         source="duckai",
-        model="gpt-4o-mini (duck.ai)",
+        model=f"{model} (duck.ai)",
         response_time_ms=elapsed,
     )
 
@@ -412,15 +477,17 @@ async def _try_duckai(
 class SmartAIRouter:
     """
     نظام ذكي لتقييم جودة وسرعة وصحة المزودين ديناميكياً:
-    - يفضل النماذج القوية في اللغة العربية (SeekAI GLM/Kimi & Gemini)
+    - يفضل النماذج القوية في اللغة العربية (SeekAI, Gemini, Ollama, NVIDIA)
     - يضع المزود الذي يواجه 429 أو خطأ في فترة Cooldown
     - يحدّث متوسط السرعة بعد كل استجابة ناجحة
     """
     def __init__(self):
         self.stats = {
-            "seekai":  {"avg_latency": 1200, "fails": 0, "cooldown_until": 0, "tier": 1},
-            "gemini":  {"avg_latency": 1500, "fails": 0, "cooldown_until": 0, "tier": 1},
-            "duckai":  {"avg_latency": 4000, "fails": 0, "cooldown_until": 0, "tier": 2},
+            "seekai":     {"avg_latency": 1200, "fails": 0, "cooldown_until": 0, "tier": 1},
+            "gemini":     {"avg_latency": 1500, "fails": 0, "cooldown_until": 0, "tier": 1},
+            "ollama":     {"avg_latency": 800,  "fails": 0, "cooldown_until": 0, "tier": 1},
+            "nvidia_nim": {"avg_latency": 1100, "fails": 0, "cooldown_until": 0, "tier": 1},
+            "duckai":     {"avg_latency": 4000, "fails": 0, "cooldown_until": 0, "tier": 2},
         }
 
     def record_success(self, provider: str, latency_ms: int):
@@ -460,11 +527,12 @@ async def get_ai_response(
     context: dict | None = None,
     component: str = "brain",
     seekai_model: str | None = None,
+    preferred_source: str | None = None,
 ) -> AIResponse:
     """
     الدالة الرئيسية — تختار ديناميكياً أسرع وأفضل مزود في الوقت الفعلي:
-      - تفحص المزودين المتاحين (SeekAI و Gemini)
-      - ترتبهم حسب الجودة والسرعة
+      - تفحص المزودين المتاحين (SeekAI, Gemini, Ollama, NVIDIA NIM)
+      - ترتبهم حسب الجودة والسرعة وصحة الاتصال
       - تنفذ وتحدث الإحصائيات فوراً
     """
     if context is None:
@@ -474,7 +542,7 @@ async def get_ai_response(
     history = context.get("recent_messages", [])
     errors = []
 
-    # 1. تحديد المزودين المهيئين بـ API Keys
+    # 1. تحديد المزودين المتاحين
     configured = []
     seekai_key = os.getenv("SEEKAI_API_KEY")
     if seekai_key:
@@ -483,19 +551,52 @@ async def get_ai_response(
     gemini_key = (
         os.getenv(f"GEMINI_API_KEY_{component.upper()}")
         or os.getenv("GEMINI_API_KEY_BRAIN")
+        or os.getenv("GEMINI_API_KEY")
     )
     if gemini_key:
         configured.append("gemini")
 
-    # Duck.ai متاح دائماً كـ Fallback
+    nvidia_key = os.getenv("NVIDIA_API_KEY")
+    if nvidia_key:
+        configured.append("nvidia_nim")
+
+    # فحص خادم Ollama المحلي السريع
+    if is_ollama_online():
+        configured.append("ollama")
+
+    # Duck.ai مجاني وبدون مفتاح ومتاح دائماً
     configured.append("duckai")
 
-    # 2. الحصول على الترتيب الأمثل
-    optimal_order = router.get_optimal_order(configured)
+    # 2. ترتيب المزودين (مع مراعاة التفضيل لو محدد)
+    if preferred_source:
+        pref = preferred_source.lower()
+        if pref in ("ollama", "local") and "ollama" in configured:
+            optimal_order = ["ollama"] + [p for p in configured if p != "ollama"]
+        elif pref in ("duckai", "duck") and "duckai" in configured:
+            optimal_order = ["duckai"] + [p for p in configured if p != "duckai"]
+        elif pref in configured:
+            optimal_order = [pref] + [p for p in configured if p != pref]
+        else:
+            optimal_order = router.get_optimal_order(configured)
+    else:
+        optimal_order = router.get_optimal_order(configured)
 
     # 3. التجربة حسب الترتيب
     for provider in optimal_order:
-        if provider == "seekai" and seekai_key:
+        if provider == "ollama":
+            try:
+                res = await _try_ollama(
+                    user_message, history, system_prompt,
+                    model=os.getenv("OLLAMA_MODEL", "qwen2.5:7b"),
+                )
+                router.record_success("ollama", res.response_time_ms)
+                return res
+            except Exception as e:
+                errors.append(f"Ollama: {e}")
+                router.record_failure("ollama", is_rate_limit=False)
+                print(f"[SMART ROUTER] Ollama failed: {e} -> Switching to next provider...")
+
+        elif provider == "seekai" and seekai_key:
             try:
                 res = await _try_seekai(
                     user_message, history, system_prompt,
@@ -508,14 +609,14 @@ async def get_ai_response(
                 msg = f"SeekAI ({label}): Timeout ({SEEKAI_TIMEOUT_SECONDS}s)"
                 errors.append(msg)
                 router.record_failure("seekai", is_rate_limit=False)
-                print(f"[SMART ROUTER] {msg} -> Switching to Gemini...")
+                print(f"[SMART ROUTER] {msg} -> Switching...")
             except Exception as e:
                 label = seekai_model or "default"
                 msg = f"SeekAI ({label}): {type(e).__name__}: {e}"
                 errors.append(msg)
                 is_429 = "429" in str(e) or "limit" in str(e).lower()
                 router.record_failure("seekai", is_rate_limit=is_429)
-                print(f"[SMART ROUTER] {msg} -> Switching to Gemini...")
+                print(f"[SMART ROUTER] {msg} -> Switching...")
 
         elif provider == "gemini" and gemini_key:
             try:
@@ -534,6 +635,17 @@ async def get_ai_response(
                 router.record_failure("gemini", is_rate_limit=is_429)
                 print(f"[SMART ROUTER] {msg} -> Switching...")
 
+        elif provider == "nvidia_nim" and nvidia_key:
+            try:
+                res = await _try_nvidia(user_message, history, system_prompt, nvidia_key)
+                router.record_success("nvidia_nim", res.response_time_ms)
+                return res
+            except Exception as e:
+                msg = f"NVIDIA NIM: {type(e).__name__}: {e}"
+                errors.append(msg)
+                router.record_failure("nvidia_nim", is_rate_limit=("429" in str(e)))
+                print(f"[SMART ROUTER] {msg} -> Switching...")
+
         elif provider == "duckai":
             try:
                 res = await _try_duckai(user_message, history, system_prompt)
@@ -543,10 +655,21 @@ async def get_ai_response(
                 msg = f"Duck.ai: Timeout ({DUCKAI_TIMEOUT_SECONDS}s)"
                 errors.append(msg)
                 router.record_failure("duckai", is_rate_limit=False)
+                print(f"[SMART ROUTER] {msg} -> Switching...")
             except Exception as e:
                 msg = f"Duck.ai: {type(e).__name__}: {e}"
                 errors.append(msg)
                 router.record_failure("duckai", is_rate_limit=False)
+                print(f"[SMART ROUTER] {msg} -> Switching...")
+
+    # 4. Fallback إضافي: لو Ollama مكنش في الترتيب بس متصل
+    if "ollama" not in optimal_order and is_ollama_online():
+        try:
+            res = await _try_ollama(user_message, history, system_prompt)
+            router.record_success("ollama", res.response_time_ms)
+            return res
+        except Exception as ollama_err:
+            errors.append(f"Ollama fallback: {ollama_err}")
 
     # -- كل المصادر فشلت --
     return AIResponse(
@@ -556,6 +679,56 @@ async def get_ai_response(
         response_time_ms=0,
         error=" | ".join(errors),
     )
+
+
+# --- Standalone: Ollama Direct (المعالج المحلي المباشر) ---
+
+async def get_ollama_response(
+    user_message: str,
+    model: str | None = None,
+    context: dict | None = None,
+) -> AIResponse:
+    """
+    استدعاء Ollama محلياً مباشرة وبدون أي مزودات سحابية.
+    مناسب للعمل Offline أو للاستفادة الكاملة من كرت الشاشة RTX 4070.
+
+    الموديلات المتاحة (OLLAMA_MODELS):
+        'qwen'     -> qwen2.5:7b (الافتراضي)
+        'llama'    -> llama3.2:latest
+        'mistral'  -> mistral:latest
+        'deepseek' -> deepseek-r1:7b
+    """
+    if context is None:
+        context = {}
+
+    system_prompt = _build_system_prompt(context) if context else _STATIC_SYSTEM_PROMPT
+    history = context.get("recent_messages", [])
+
+    if not is_ollama_online():
+        return AIResponse(
+            content="خادم Ollama المحلي غير متصل (تأكد من تشغيل Ollama على جهازك).",
+            source="error",
+            model=model or "default",
+            response_time_ms=0,
+            error="Ollama server is offline",
+        )
+
+    try:
+        resolved_model = OLLAMA_MODELS.get(model or "default", model or os.getenv("OLLAMA_MODEL", "qwen2.5:7b"))
+        return await _try_ollama(
+            user_message,
+            history,
+            system_prompt,
+            model=resolved_model,
+        )
+    except Exception as e:
+        return AIResponse(
+            content=f"خطأ في استدعاء Ollama المحلي: {e}",
+            source="error",
+            model=model or "default",
+            response_time_ms=0,
+            error=str(e),
+        )
 
 
 # --- Standalone: SeekAI Direct (لمهام محددة) ---
@@ -568,22 +741,12 @@ async def get_seekai_response(
     """
     استدعاء SeekAI بموديل محدد مباشرة — بدون تجربة Gemini أولًا.
 
-    استخدمها لما Shaher Brain يريد رد من Claude أو GPT تحديدًا
-    لمهمة معينة (مراجعة كود، رأي ثاني، مقارنة).
-
     الموديلات المتاحة (SEEKAI_MODELS):
         'gpt'             -> gpt-5.6-sol
         'claude'          -> claude-sonnet-5
         'gpt-5.6-sol'     -> gpt-5.6-sol
         'claude-sonnet-5' -> claude-sonnet-5
         'default'         -> الافتراضي من .env
-
-    مثال:
-        result = await get_seekai_response(
-            "راجع الكود ده وقترحلي تحسينات",
-            model="claude",
-            context=ctx,
-        )
     """
     if context is None:
         context = {}
@@ -612,6 +775,74 @@ async def get_seekai_response(
             content=f"فشل SeekAI ({resolved}): {e}",
             source="error",
             model=resolved,
+            response_time_ms=0,
+            error=str(e),
+        )
+
+
+# --- Standalone: NVIDIA NIM Direct (لمهام محددة) ---
+
+async def get_nvidia_response(
+    user_message: str,
+    model: str | None = None,
+    context: dict | None = None,
+) -> AIResponse:
+    """استدعاء NVIDIA NIM مباشرة لموديل محدد."""
+    if context is None:
+        context = {}
+
+    api_key = os.getenv("NVIDIA_API_KEY")
+    if not api_key:
+        return AIResponse(
+            content="NVIDIA_API_KEY غير موجود في .env",
+            source="error",
+            model=model or "default",
+            response_time_ms=0,
+            error="missing NVIDIA_API_KEY",
+        )
+
+    system_prompt = _build_system_prompt(context) if context else _STATIC_SYSTEM_PROMPT
+    history = context.get("recent_messages", [])
+
+    try:
+        return await _try_nvidia(
+            user_message, history, system_prompt,
+            api_key, model=model,
+        )
+    except Exception as e:
+        resolved = NVIDIA_MODELS.get(model or "default", model or "default")
+        return AIResponse(
+            content=f"فشل NVIDIA NIM ({resolved}): {e}",
+            source="error",
+            model=resolved,
+            response_time_ms=0,
+            error=str(e),
+        )
+
+
+# --- Standalone: Duck.ai Direct (بدون API Key) ---
+
+async def get_duckai_response(
+    user_message: str,
+    model: str = "gpt-4o-mini",
+    context: dict | None = None,
+) -> AIResponse:
+    """استدعاء Duck.ai مباشرة مجاناً بدون API Key وبمهلة سريعة."""
+    if context is None:
+        context = {}
+
+    system_prompt = _build_system_prompt(context) if context else _STATIC_SYSTEM_PROMPT
+    history = context.get("recent_messages", [])
+
+    try:
+        return await _try_duckai(
+            user_message, history, system_prompt, model=model
+        )
+    except Exception as e:
+        return AIResponse(
+            content=f"فشل Duck.ai ({model}): {e}",
+            source="error",
+            model=model,
             response_time_ms=0,
             error=str(e),
         )
