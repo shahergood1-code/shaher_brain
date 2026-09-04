@@ -61,15 +61,21 @@ try:
 
 except Exception as exc:
     err_tb = traceback.format_exc()
+    err_msg = str(exc)
 
     @app.api_route("/{full_path:path}", methods=["GET", "POST"])
     async def fallback_diagnostic(full_path: str = ""):
+        is_missing_bot = "No module named 'bot'" in err_msg or "No module named" in err_msg
+        help_text = (
+            "⚠️ مجلدات المشروع (bot, brain) غير موجودة في حزمة Vercel لأن إعداد 'Root Directory' في Vercel مضبوط على api بدلاً من المجلد الرئيسي (./). "
+            "الحل: ادخل على إعدادات Vercel -> Settings -> General -> Root Directory واحذف api واجعله ./ ثم اضغط Save."
+            if is_missing_bot else "خطأ أثناء تشغيل السيرفر"
+        )
         return {
-            "status": "diagnostic_mode",
-            "message": "⚠️ حدث خطأ أثناء تشغيل ملفات المشروع السحابية",
-            "error": str(exc),
-            "traceback": err_tb,
+            "status": "action_required" if is_missing_bot else "error",
+            "message": help_text,
+            "error_detail": err_msg,
             "cwd": os.getcwd(),
             "cwd_files": os.listdir(".") if os.path.exists(".") else [],
-            "sys_path": sys.path[:5],
+            "solution": "غيّر Root Directory في Vercel إلى ./ لتمكين السيرفر من قراءة bot و brain",
         }
