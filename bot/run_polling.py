@@ -49,7 +49,7 @@ async def start_polling():
             updates = await bot.get_updates(offset=offset, timeout=20, allowed_updates=["message", "callback_query"])
             for update in updates:
                 offset = update.update_id + 1
-                asyncio.create_task(handle_update(update.to_dict(), bot))
+                asyncio.create_task(handle_update(update, bot))
         except asyncio.CancelledError:
             logger.info("🛑 تم إيقاف البوت المحلي.")
             break

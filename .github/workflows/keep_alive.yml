@@ -1,0 +1,27 @@
+name: Keep Alive Free Server (Render / Koyeb)
+
+on:
+  schedule:
+    # يعمل كل 14 دقيقة لمنع السيرفر المجاني من النوم
+    - cron: '*/14 * * * *'
+  workflow_dispatch: # يتيح تشغيله يدوياً لتجربته في أي وقت
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Webhook Health Endpoint
+        run: |
+          URL="${{ secrets.HEALTH_URL }}"
+          if [ -z "$URL" ]; then
+            echo "ℹ️ HEALTH_URL secret is not set yet. Add it in repo Settings -> Secrets -> Actions"
+            exit 0
+          fi
+          echo "📡 Pinging $URL to keep server awake..."
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "$URL")
+          echo "Status Code: $RESPONSE"
+          if [ "$RESPONSE" -eq 200 ]; then
+            echo "✅ Server is alive and responsive!"
+          else
+            echo "⚠️ Received response code: $RESPONSE"
+          fi

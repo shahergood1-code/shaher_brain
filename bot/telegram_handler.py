@@ -17,6 +17,7 @@ bot/telegram_handler.py
 import os
 import time
 import asyncio
+from typing import Union
 from telegram import Update, Bot
 from telegram.constants import ChatAction
 
@@ -42,12 +43,15 @@ def _get_authorized_ids() -> set[int]:
 AUTHORIZED_IDS = _get_authorized_ids()
 
 
-async def handle_update(update_data: dict, bot: Bot) -> None:
+async def handle_update(update_data: Union[dict, Update], bot: Bot) -> None:
     """
     نقطة الدخول الرئيسية — بتاخد update من Telegram وتعالجه.
-    بيتستدعى من webhook في main.py
+    بيتستدعى من webhook في main.py أو من polling في run_polling.py
     """
-    update = Update.de_json(update_data, bot)
+    if isinstance(update_data, Update):
+        update = update_data
+    else:
+        update = Update.de_json(update_data, bot)
 
     if not update.message:
         return  # ignore non-message updates
