@@ -165,9 +165,20 @@ def _fallback_to_brain_image(prompt: str, dest_path: Path, reason: str) -> Dict[
     """توليد الصورة عبر SeekAI المسجل في المرحلة الأولى."""
     try:
         import asyncio
+        import concurrent.futures
         from brain.image_client import generate_image
 
-        res = asyncio.run(generate_image(prompt=prompt, model="nano-banana"))
+        coro = generate_image(prompt=prompt, model="nano-banana")
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                res = executor.submit(asyncio.run, coro).result()
+        else:
+            res = asyncio.run(coro)
         if res.get("status") == "success" and res.get("image_url"):
             # تحميل رابط الصورة من SeekAI
             import urllib.request

@@ -139,14 +139,18 @@ async def get_full_context() -> dict:
     global _cached_decisions, _cached_decisions_ts
 
     now = time.time()
-    db = get_supabase()
-    
     ctx: dict = {
         "recent_messages": [],
         "active_projects": [],
         "preferences": {},
         "recent_decisions": [],
     }
+
+    try:
+        db = get_supabase()
+    except Exception as exc:
+        # لو السيرفر السحابي مش متصل أو المفاتيح مش موجودة، نرجع سياق نظيف
+        return ctx
 
     # ── 1. آخر المحادثات (دائماً مباشرة من قاعدة البيانات) ──
     try:

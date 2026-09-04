@@ -28,7 +28,17 @@ def generate_voiceover(text: str, save_as: str = "voiceover.mp3", voice: str = D
             communicate = edge_tts.Communicate(text, voice)
             await communicate.save(str(dest_path))
 
-        asyncio.run(_synthesize())
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                executor.submit(asyncio.run, _synthesize()).result()
+        else:
+            asyncio.run(_synthesize())
         logger.info(f"تم توليد الصوت بنجاح: {dest_path}")
         return {
             "status": "ok",

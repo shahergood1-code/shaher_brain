@@ -34,6 +34,24 @@ def _format_timestamp_ass(seconds: float) -> str:
     return f"{hours:d}:{mins:02d}:{secs:02d}.{centis:02d}"
 
 
+_cached_whisper_models: dict = {}
+
+def _get_whisper_model(model_size: str, device: str, compute_type: str):
+    """كاش ذكي لموديل Whisper لتفادي إعادة القراءة من القرص في كل استدعاء."""
+    key = (model_size, device, compute_type)
+    if key not in _cached_whisper_models:
+        from faster_whisper import WhisperModel
+        logger.info(f"تحميل Whisper للمرة الأولى ({model_size}) على {device} ({compute_type})...")
+        cpu_threads = 4 if device == "cpu" else 0
+        _cached_whisper_models[key] = WhisperModel(
+            model_size,
+            device=device,
+            compute_type=compute_type,
+            cpu_threads=cpu_threads,
+        )
+    return _cached_whisper_models[key]
+
+
 def generate_subtitles(
     audio_path: str,
     output_ass_name: Optional[str] = None,
@@ -54,12 +72,8 @@ def generate_subtitles(
         ass_path = audio_file.with_suffix(".ass")
 
     try:
-        from faster_whisper import WhisperModel
-
         compute_type = "float16" if device == "cuda" else "int8"
-        logger.info(f"تحميل Whisper ({model_size}) على {device} ({compute_type})...")
-
-        model = WhisperModel(model_size, device=device, compute_type=compute_type)
+        model = _get_whisper_model(model_size, device, compute_type)
         segments, info = model.transcribe(str(audio_file), language=language, vad_filter=True)
 
         # رأس ملف ASS بتنسيق أنيق ومحاذاة مناسبة للشورتس (فوق أزرار الواجهة)

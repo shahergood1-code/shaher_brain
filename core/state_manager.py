@@ -17,14 +17,23 @@ logger = logging.getLogger("StateManager")
 LOCAL_HISTORY_FILE = WORKSPACE_DIR / "history.json"
 
 
+_supabase_client_instance = None
+_supabase_checked = False
+
 def _get_supabase_client():
-    """يحاول جلب كائن Supabase من memory/supabase_client."""
+    """يحاول جلب كائن Supabase من memory/supabase_client مع حفظ النتيجة لتفادي التكرار."""
+    global _supabase_client_instance, _supabase_checked
+    if _supabase_checked:
+        return _supabase_client_instance
+
+    _supabase_checked = True
     try:
         from memory.supabase_client import get_supabase
-        return get_supabase()
+        _supabase_client_instance = get_supabase()
     except Exception as exc:
-        logger.warning(f"تعذر الاتصال بـ Supabase: {exc} — سيتم استخدام التخزين المحلي.")
-        return None
+        logger.info(f"تعذر الاتصال بـ Supabase: {exc} — سيتم استخدام التخزين المحلي التلقائي.")
+        _supabase_client_instance = None
+    return _supabase_client_instance
 
 
 def _load_local_history() -> List[Dict[str, Any]]:

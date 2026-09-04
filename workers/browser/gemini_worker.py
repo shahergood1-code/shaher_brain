@@ -104,14 +104,20 @@ def _fallback_to_brain_ai(prompt: str, fallback_reason: str) -> Dict[str, Any]:
     """
     try:
         import asyncio
+        import concurrent.futures
         from brain.ai_client import get_ai_response
 
-        ai_resp = asyncio.run(
-            get_ai_response(
-                user_message=prompt,
-                component="brain",
-            )
-        )
+        coro = get_ai_response(user_message=prompt, component="brain")
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                ai_resp = executor.submit(asyncio.run, coro).result()
+        else:
+            ai_resp = asyncio.run(coro)
         return {
             "status": "ok",
             "source": f"fallback_{ai_resp.source}",

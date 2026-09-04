@@ -127,20 +127,23 @@ def render_shorts_video(
         if not normalized_clips:
             return {"status": "error", "error": "لم يتم العثور على أي مشاهد صالحة للدمج"}
 
-        # 2) إنشاء قائمة Concat
-        concat_txt = temp_dir / "concat_list.txt"
-        concat_content = "\n".join(f"file '{c.resolve().as_posix()}'" for c in normalized_clips)
-        concat_txt.write_text(concat_content, encoding="utf-8")
+        # 2) إنشاء قائمة Concat لو أكثر من مشهد
+        if len(normalized_clips) == 1:
+            merged_video = normalized_clips[0]
+        else:
+            concat_txt = temp_dir / "concat_list.txt"
+            concat_content = "\n".join(f"file '{c.resolve().as_posix()}'" for c in normalized_clips)
+            concat_txt.write_text(concat_content, encoding="utf-8")
 
-        merged_video = temp_dir / "merged_video.mp4"
-        concat_cmd = [
-            FFMPEG_EXE, "-y",
-            "-f", "concat", "-safe", "0",
-            "-i", str(concat_txt),
-            "-c", "copy",
-            str(merged_video),
-        ]
-        subprocess.run(concat_cmd, check=True, capture_output=True, text=True)
+            merged_video = temp_dir / "merged_video.mp4"
+            concat_cmd = [
+                FFMPEG_EXE, "-y",
+                "-f", "concat", "-safe", "0",
+                "-i", str(concat_txt),
+                "-c", "copy",
+                str(merged_video),
+            ]
+            subprocess.run(concat_cmd, check=True, capture_output=True, text=True)
 
         # 3) الدمج النهائي مع الصوت وحرق الترجمة بـ NVENC
         output_path = READY_SHORTS_DIR / output_name
@@ -171,6 +174,15 @@ def render_shorts_video(
         logger.info("بدء الرندر النهائي مسرع بـ NVENC...")
         subprocess.run(final_cmd, check=True, capture_output=True, text=True)
         logger.info(f"تم تصدير الفيديو النهائي بنجاح: {output_path}")
+
+        # تنظيف الملفات المؤقتة تلقائياً للحفاظ على مساحة القرص
+        try:
+            for item in temp_dir.glob("norm_scene_*.mp4"):
+                item.unlink(missing_ok=True)
+            (temp_dir / "concat_list.txt").unlink(missing_ok=True)
+            (temp_dir / "merged_video.mp4").unlink(missing_ok=True)
+        except Exception:
+            pass
 
         return {
             "status": "ok",
