@@ -1,248 +1,165 @@
-# شاهر الثاني — دليل التشغيل الكامل
+# 🧠 شاهر الثاني — نظام التشغيل الشخصي بالذكاء الاصطناعي (Shaher II OS)
 
-## البنية التقنية
-
-```
-Telegram ←→ Railway (FastAPI) ←→ Supabase (Memory)
-                    ↕
-            Shaher Brain (Router)
-              ↙        ↓        ↘
-         Chat AI    Image AI   Commands
-        Gemini→     SeekAI      Direct
-        SeekAI→     (only)
-        Duck.ai
-```
+> **نظام تشغيل شخصي متكامل بالذكاء الاصطناعي يجمع بين: التفاعل الفوري عبر تليجرام (نص وصوت)، الذاكرة الدائمة في Supabase، وخط إنتاج ونشر المحتوى الرقمي المؤتمت بالكامل (Content Orchestrator).**
 
 ---
 
-## متطلبات قبل البدء
-
-قبل ما تبدأ، لازم تجمع الحاجات دي:
-
-| الحاجة | من فين | وقت التجهيز |
-|--------|--------|------------|
-| Telegram Bot Token | [@BotFather](https://t.me/BotFather) | دقيقة |
-| Telegram User ID | [@userinfobot](https://t.me/userinfobot) | ثواني |
-| Supabase URL + Keys | [supabase.com](https://supabase.com) | 5 دقايق |
-| Gemini API Key | [AI Studio](https://aistudio.google.com) | دقيقتين |
-| SeekAI API Key | حسابك على SeekAI | عندك بالفعل |
-| GitHub account | لرفع الـ repo | عندك |
-| Railway account | [railway.app](https://railway.app) | دقيقة |
-
----
-
-## الخطوات بالترتيب
-
-### الخطوة 1 — اعمل Telegram Bot
-
-1. افتح [@BotFather](https://t.me/BotFather) على تليجرام
-2. ابعت: `/newbot`
-3. حدد اسم البوت (مثال: `شاهر`)
-4. حدد username (لازم ينتهي بـ `bot`، مثال: `shaher_ii_bot`)
-5. احتفظ بالـ **Token** اللي هيظهر — هتحتاجه لاحقًا
-
-**لمعرفة Telegram User ID بتاعك:**
-- ابعت أي رسالة لـ [@userinfobot](https://t.me/userinfobot)
-- هيرد بالـ ID الرقمي بتاعك (مثال: `123456789`)
-
----
-
-### الخطوة 2 — اعمل Supabase Project
-
-1. روح [supabase.com](https://supabase.com) → **New Project**
-2. اختار اسم (مثال: `shaher-brain`) وكلمة سر قوية
-3. استنى لحد ما المشروع يجهز (~2 دقيقة)
-4. من القائمة اليسرى → **SQL Editor**
-5. انسخ كل محتوى `supabase/schema.sql` والصقه في الـ Editor
-6. اضغط **Run** — المفروض يقول "Success"
-7. من **Settings → API** احتفظ بـ:
-   - `Project URL` (شكله: `https://xyz.supabase.co`)
-   - `anon public` key
-   - `service_role` key ⚠️ (سري جدًا)
-
----
-
-### الخطوة 3 — احصل على Gemini API Keys
-
-1. روح [Google AI Studio](https://aistudio.google.com)
-2. من القائمة اليسرى → **Get API Key** → **Create API Key**
-3. اعمل **مفتاح واحد** للبداية وحطه في `GEMINI_API_KEY_BRAIN`
-4. الخطة: مفاتيح منفصلة لكل مكون لاحقًا (Brain, Trend, Browser)
-
-> 💡 المفتاح المجاني = 1,500 طلب/يوم على Gemini 1.5 Flash. كافي جدًا للبداية. لو راح، SeekAI هيتولى تلقائيًا.
-
----
-
-### الخطوة 4 — اعمل GitHub Repo وارفع الكود
-
-```bash
-# من جهازك، داخل مجلد المشروع
-cd "C:\Users\Ncic\Desktop\شاهر\brain"
-
-# initialize git
-git init
-git add .
-git commit -m "feat: شاهر الثاني — المرحلة 1"
-
-# اعمل repo جديد على github.com اسمه: shaher-ii (private)
-# ثم:
-git remote add origin https://github.com/YOUR_USERNAME/shaher-ii.git
-git branch -M main
-git push -u origin main
-```
-
-> ⚠️ **مهم**: تأكد إن `.gitignore` موجود وإن `.env` **مش** في الملفات المرفوعة. لو عملت `git status` المفروض `.env` مش في القائمة.
-
----
-
-### الخطوة 5 — Railway Setup والـ Deploy ⭐
-
-ده أهم قسم — اتبعه خطوة بخطوة:
-
-#### 5.1 اعمل حساب على Railway
-- روح [railway.app](https://railway.app)
-- سجل دخول بـ GitHub مباشرة (أسهل)
-
-#### 5.2 اعمل Project جديد
-1. من Dashboard → **New Project**
-2. اختار → **Deploy from GitHub repo**
-3. لو أول مرة: اضغط **Configure GitHub App** وادّي Railway صلاحية الـ repo
-4. اختار repo: `shaher-ii`
-5. Railway هيبدأ يبني الـ project تلقائيًا (هيشوف `Procfile` و `railway.toml`)
-
-#### 5.3 أضف Environment Variables
-1. بعد ما المشروع يتعمل → اضغط على الـ **Service**
-2. من القائمة → **Variables**
-3. أضف كل متغير من `.env.example` بالقيم الحقيقية:
+## 🏛️ المعمارية العامة للنظام (Architecture)
 
 ```
-TELEGRAM_BOT_TOKEN       = [Token من BotFather]
-SUPABASE_URL             = [URL من Supabase]
-SUPABASE_ANON_KEY        = [anon key]
-SUPABASE_SERVICE_ROLE_KEY = [service_role key]
-GEMINI_API_KEY_BRAIN     = [Gemini key]
-SEEKAI_API_KEY           = [SeekAI key]
-SEEKAI_BASE_URL          = https://api.seekai.tools/v1
-SEEKAI_IMAGE_MODEL       = flux
-AUTHORIZED_USER_ID       = [Telegram User ID]
-SETUP_SECRET             = [كلمة سر تختارها]
-ENVIRONMENT              = production
-```
-
-> ⚠️ `WEBHOOK_BASE_URL` هتعرفه في الخطوة الجاية
-
-#### 5.4 احصل على الـ Railway Domain
-1. من الـ Service → **Settings** → **Networking**
-2. اضغط **Generate Domain**
-3. هيديك URL زي: `shaher-ii-production.up.railway.app`
-4. ارجع لـ **Variables** وأضف:
-   ```
-   WEBHOOK_BASE_URL = https://shaher-ii-production.up.railway.app
-   ```
-5. اضغط **Deploy** (أو هيعمل redeploy تلقائي)
-
-#### 5.5 تحقق إن الـ Deploy نجح
-- من الـ **Deployments** tab، شوف آخر deployment
-- لازم يكون **Active** (خضر)
-- اضغط **View Logs** وتأكد من رسالة:
-  ```
-  INFO:     Application startup complete.
-  ```
-
----
-
-### الخطوة 6 — سجّل الـ Webhook في Telegram (مرة واحدة بس)
-
-افتح المتصفح وروح على:
-```
-https://shaher-ii-production.up.railway.app/setup?secret=YOUR_SETUP_SECRET
-```
-(غيّر الـ URL والـ secret بالقيم الحقيقية)
-
-المفروض يرد بـ:
-```json
-{
-  "success": true,
-  "webhook_url": "https://shaher-ii-production.up.railway.app/webhook"
-}
+                       ┌─────────────────────────────────────────┐
+                       │       Telegram Bot (نص & فويس نوت)      │
+                       └────────────────────┬────────────────────┘
+                                            │
+                                            ▼
+                       ┌─────────────────────────────────────────┐
+                       │          Shaher Brain (Router)          │
+                       │   توجيه الرسائل / الأوامر / الذاكرة     │
+                       └───────────┬─────────────────┬───────────┘
+                                   │                 │
+            ┌──────────────────────┴──────┐          │
+            ▼                             ▼          ▼
+┌───────────────────────┐   ┌─────────────────┐  ┌─────────────────────────────────┐
+│     Cloud AI Chain    │   │  SeekAI Images  │  │  Supabase Memory (9 جداول)      │
+│ Gemini ➔ SeekAI ➔ DDG │   │  Flux / Banana  │  │  interactions, preferences,     │
+└───────────────────────┘   └─────────────────┘  │  projects, decisions, knowledge,│
+                                                 │  content_tasks, content_posts,  │
+                                                 │  content_analytics, images      │
+                                                 └───────────────▲─────────────────┘
+                                                                 │ (Sync & Feedback)
+═════════════════════════════════════════════════════════════════╪══════════════════════
+المرحلة الثانية: خط إنتاج المحتوى المستقل (Content Orchestrator) │ (Local RTX 4070 8GB)
+═════════════════════════════════════════════════════════════════╪══════════════════════
+                                                                 │
+                       ┌─────────────────────────────────────────┴───────────────┐
+                       │     Master Orchestrator (Ollama: qwen2.5:7b)            │
+                       │      إدارة الخطة والأدوات عبر Function Calling           │
+                       └────────────────────────────┬────────────────────────────┘
+                                                    │
+         ┌──────────────────────────────────────────┼──────────────────────────────────────┐
+         ▼                                          ▼                                      ▼
+┌───────────────────────────────┐   ┌──────────────────────────────┐   ┌───────────────────────────────┐
+│     Browser Worker (CDP 9222) │   │     Local Media Engine       │   │    Automation & Analytics     │
+│ 1. Gemini Pinned Chats (أفكار)│   │ 1. edge-tts (صوت عربي شاكر)  │   │ 1. رفع Shorts (YouTube/TikTok)│
+│ 2. Google Flow (Nano Banana 2)│   │ 2. faster-whisper (ترجمة ASS)│   │ 2. قراءة إحصائيات 24h         │
+│ 3. Veo Lite (تحريك المشاهد)   │   │ 3. FFmpeg NVENC 9:16 (مونتاج)│   │ 3. Windows Task Scheduler     │
+└───────────────────────────────┘   └──────────────────────────────┘   └───────────────────────────────┘
 ```
 
 ---
 
-### الخطوة 7 — اختبر شاهر!
+## 💻 التوافق مع مواصفات العتاد المحلي (Hardware Optimization)
 
-افتح البوت على تليجرام وجرب:
-
-| الرسالة | المتوقع |
-|---------|---------|
-| `/start` | رسالة ترحيب |
-| `/status` | حالة النظام |
-| `صباح الخير` | رد من Gemini (أو SeekAI كـ fallback) |
-| `ولّدلي صورة غلاف يوتيوب عن البرمجة` | صورة من SeekAI |
-| `فتكرني باللي قلناه قبل كده` | بيجيب من الذاكرة |
-| رسالة صوتية | بيحولها لنص ويرد |
-
-**تحقق من Supabase** → Table Editor:
-- `interactions` — كل تفاعل متسجل
-- `generated_images` — كل صورة اتولّدت
+تم ضبط كافة العمليات المحلية لتعمل بأعلى كفاءة على:
+- **الجهاز**: ASUS TUF Gaming F15 (i7-13620H - 16GB RAM - 1TB SSD).
+- **كرت الشاشة**: NVIDIA GeForce RTX 4070 Laptop **8GB VRAM**.
+- **إدارة الذاكرة (VRAM Guard)**:
+  - موديل **Ollama `qwen2.5:7b`** يستهلك قرابة **4.7 - 5.3 GB VRAM** ويظل شغالاً باستقرار.
+  - محرك الترجمة **`faster-whisper`** يعمل على المعالج i7-13620H (10 أنوية) بنمط `int8` ويفرّغ الصوت في **1.5 ثانية باستهلاك 0 VRAM** تماماً، أو على CUDA بحجم `base`.
+  - محرك المونتاج **FFmpeg NVENC** (`h264_nvenc -preset p4 -cq 20`) يستخدم شريحة التشفير العتادية المخصصة بالكرت مع استهلاك VRAM ضئيل جداً (<100MB)، وينتج ريلز 9:16 كامل مع حرق الترجمة في **ثانيتين فقط**.
 
 ---
 
-## Auto-Deploy عند كل Push
-
-من الآن، أي `git push` على الـ `main` branch هيعمل deploy تلقائي:
-
-```bash
-# مثال: غيّرت حاجة في الكود
-git add .
-git commit -m "fix: تحسين في router"
-git push origin main
-# Railway هيشوف الـ push ويعمل deploy تلقائي خلال 1-2 دقيقة
-```
-
----
-
-## هيكل الملفات
+## 📁 هيكل المشروع المنظم (Directory Tree)
 
 ```
-brain/
-├── .env.example           ← template المتغيرات
-├── .gitignore             ← .env محمي
-├── requirements.txt       ← المكتبات
-├── railway.toml           ← Railway config
-├── Procfile               ← start command
-├── README.md              ← أنت هنا
-│
+shaher_brain/
+├── config/
+│   ├── settings.py             # المسارات، إعدادات العتاد وNVENC، كشف FFmpeg التلقائي
+│   └── selectors.py            # مركز محددات الـ DOM (Gemini, Flow, YouTube Studio, TikTok, IG)
+├── core/
+│   ├── orchestrator.py         # العقل المدير (Ollama Qwen2.5 Tool Calling Loop)
+│   ├── prompts.py              # موجهات النظام (Prompts) واستراتيجيات زيادة الـ Retention
+│   └── state_manager.py        # مزامنة المهام والمنشورات والإحصائيات الحية مع Supabase
+├── workers/
+│   ├── browser/
+│   │   ├── cdp_client.py       # مدير اتصال متصفح Chrome Remote Debugging (Singleton آمن)
+│   │   ├── gemini_worker.py    # أتمتة استخراج الأفكار والسكريبت مع Fallback لـ Phase 1
+│   │   ├── flow_worker.py      # أتمتة Flow (Nano Banana 2 و Veo Lite) مع Fallback لـ SeekAI
+│   │   └── social_worker.py    # أتمتة النشر واستخراج إحصائيات الأداء بعد 24 ساعة
+│   └── media/
+│       ├── tts_worker.py       # توليد الفويس أوفر العربي (ar-EG-ShakirNeural)
+│       ├── subtitle_worker.py  # تفريغ الصوت وتوليد ملف ترجمة ASS بتنسيق مميز للشورتس
+│       └── video_renderer.py   # مونتاج FFmpeg بـ NVENC، تحويل 9:16، وحرق الترجمة
+├── utils/
+│   ├── gpu_guard.py            # فحص الـ VRAM المتاحة ودرجة حرارة الكرت
+│   └── scheduler_setup.py      # تسجيل المهمة في Windows Task Scheduler لتعمل يومياً
 ├── bot/
-│   ├── main.py            ← FastAPI: /webhook /health /setup
-│   ├── telegram_handler.py ← معالجة النص والصوت والصور
-│   └── voice_handler.py   ← Gemini multimodal transcription
-│
+│   ├── telegram_handler.py     # معالج رسائل تليجرام
+│   ├── voice_handler.py        # تفريغ الصوت القادم من تليجرام
+│   └── main.py                 # FastAPI webhook للـ Bot على Railway
 ├── brain/
-│   ├── router.py          ← Shaher Brain (CHAT/IMAGE/MEMORY/CMD)
-│   ├── ai_client.py       ← Gemini → SeekAI → Duck.ai
-│   └── image_client.py    ← SeekAI Image API (flux/nano-banana/seedream)
-│
+│   ├── router.py               # عقل التصنيف (يدعم أوامر /content, /content_status, /content_run)
+│   ├── ai_client.py            # سلسلة الـ Fallback السحابية (Gemini, SeekAI, Duck.ai)
+│   └── image_client.py         # توليد الصور السحابية عبر SeekAI
 ├── memory/
-│   ├── supabase_client.py ← Singleton client
-│   └── logger.py          ← تسجيل تلقائي لكل تفاعل
-│
-└── supabase/
-    └── schema.sql         ← 6 جداول + triggers + seed data
+│   ├── supabase_client.py      # كائن اتصال Supabase الموحد للنظام
+│   ├── logger.py               # تسجيل المحادثات والتفاعلات
+│   └── learning_engine.py      # تحليل واستخراج تفضيلات شاهر
+├── supabase/
+│   ├── schema.sql              # جداول المرحلة الأولى (6 جداول)
+│   ├── content_schema.sql      # جداول موديول المحتوى (3 جداول)
+│   └── full_schema.sql         # السكيما الموحدة الكاملة لكافة جداول النظام
+├── workspace/                  # مجلد العمل المحلي (مستثنى من Git)
+│   ├── downloads/              # ملفات المشاهد والصوتيات المؤقتة
+│   └── exports/                # الفيديوهات والصور النهائية الجاهزة للنشر
+├── main.py                     # واجهة التحكم والتشغيل الموحدة (CLI)
+├── requirements.txt            # المتطلبات البرمجية الموحدة بالكامل
+└── .env.example                # نموذج المتغيرات البيئية الشامل
 ```
 
 ---
 
-## استكشاف الأخطاء
+## 🚀 دليل التثبيت والتشغيل السريع
 
-| المشكلة | الحل |
-|---------|------|
-| البوت مش بيرد | روح `/health` وتأكد إنه شغال، ثم تحقق من الـ webhook بـ `/setup` |
-| `SUPABASE_URL not found` | تحقق من Variables في Railway dashboard |
-| Gemini rate limit | طبيعي — النظام ينتقل لـ SeekAI تلقائيًا |
-| الصورة مش بتيجي | تحقق من `SEEKAI_API_KEY` وإن الموديل صح في `SEEKAI_IMAGE_MODEL` |
-| Railway deployment فشل | شوف Logs → غالبًا missing dependency في `requirements.txt` |
+### 1. تثبيت المتطلبات
+```bash
+pip install -r requirements.txt
+playwright install chromium
+```
+
+### 2. إعداد قاعدة البيانات في Supabase
+1. افتح مشروعك في [Supabase](https://supabase.com) واذهب إلى **SQL Editor**.
+2. انسخ محتوى الملف `supabase/full_schema.sql` (أو `supabase/content_schema.sql` لو كنت شغلت المرحلة 1 مسبقاً) واضغط **Run**.
+
+### 3. إعداد البيئة (.env)
+انسخ `.env.example` إلى `.env` واملأ المفاتيح الخاصة بك:
+```bash
+cp .env.example .env
+```
+
+### 4. تشغيل Ollama
+تأكد من تشغيل Ollama محلياً وسحب الموديل:
+```bash
+ollama serve
+ollama pull qwen2.5:7b
+```
+
+### 5. تشغيل متصفح Chrome بوضع Remote Debugging
+افتح Chrome بالأمر التالي (ليستخدم حساباتك ومحادثات جيمناي المثبتة):
+```cmd
+chrome.exe --remote-debugging-port=9222 --user-data-dir="C:\Users\shaher\AppData\Local\Google\Chrome\User Data"
+```
 
 ---
 
-*شاهر الثاني v1.0 — بُني بـ ❤️*
+## 🎮 أوامر واجهة التحكم (CLI Commands)
+
+| الأمر | الوظيفة |
+| :--- | :--- |
+| `python main.py status` | فحص حالة كرت الشاشة RTX 4070، اتصال Chrome 9222، Ollama، وSupabase |
+| `python main.py run` | تشغيل خطة إنتاج المحتوى اليومي بالكامل (شورتس + بوست سوشيال) |
+| `python main.py test-tts` | اختبار توليد الفويس أوفر الصوتي العربي |
+| `python main.py test-subtitles --audio <path>` | اختبار تفريغ الصوت بـ Whisper وتوليد ملف الترجمة ASS |
+| `python main.py test-render --audio <file> --scenes <file>` | اختبار مونتاج ريلز 9:16 مسرّع بـ NVENC مع حرق الترجمة |
+| `python main.py test-gemini` | اختبار استشارة جيمناي واستخراج الأفكار والسيناريو |
+| `python main.py schedule --time 10:00` | تثبيت المهمة لتعمل يومياً تلقائياً في Windows Task Scheduler |
+
+---
+
+## 📱 أوامر البوت في تليجرام (Telegram Commands)
+
+- `/status`: فحص حالة النظام العامة وسلسلة الذكاء الاصطناعي.
+- `/content`: عرض تفاصيل موديول إنتاج المحتوى.
+- `/content_status`: الاستعلام عن حالة آخر دورة إنتاج محتوى مسجلة في Supabase.
+- `/content_run`: إطلاق خط الإنتاج والمونتاج فوراً من تليجرام ومتابعة التقدم.

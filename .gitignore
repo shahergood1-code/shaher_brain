@@ -1,10 +1,11 @@
 # شاهر الثاني — .gitignore
 
-# ⚠️ الملف ده أهم ملف في المشروع — لا تشيل .env أبدًا
+# ⚠️ الملف ده أهم ملف في المشروع — لا ترفع .env أبدًا
 .env
 *.env.local
+.env.*
 
-# Python
+# Python & Caching
 __pycache__/
 *.py[cod]
 *$py.class
@@ -21,24 +22,28 @@ env/
 .venv/
 ENV/
 
-# Vercel
-.vercel/
-
-# IDE
+# IDE & OS
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# OS
 .DS_Store
 Thumbs.db
 
-# Temp files
+# Logs & Temp
+*.log
+logs/
 *.tmp
 tmp/
 temp/
 
-# Logs
-*.log
-logs/
+# ─── Workspace & Media Render Artifacts ───
+workspace/downloads/
+workspace/exports/
+workspace/temp_render/
+workspace/history.json
+*.mp4
+*.mp3
+*.wav
+*.ass
+*.srt

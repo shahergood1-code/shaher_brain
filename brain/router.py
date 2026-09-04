@@ -124,10 +124,65 @@ async def handle_command(text: str) -> str:
             "📋 *الأوامر المتاحة:*\n"
             "/start — البداية\n"
             "/help — قائمة الأوامر\n"
-            "/status — حالة النظام\n"
+            "/status — حالة النظام العامة\n"
+            "/content — موديول إنتاج المحتوى (الشورتس والسوشيال ميديا)\n"
+            "/content_status — حالة آخر دورة إنتاج محتوى\n"
+            "/content_run — تشغيل دورة إنتاج ونشر المحتوى اليومي فوراً\n"
             "\nأو ابعتلي أي رسالة عادية وهرد عليك مباشرة! 🧠"
         ),
         "status": "✅ النظام شغال\n🧠 AI: Gemini (مع fallback تلقائي)\n💾 الذاكرة: Supabase",
+        "content": (
+            "🎬 *موديول إنتاج المحتوى (Content Orchestrator)*\n\n"
+            "النظام مجهز بالكامل لإنتاج شورتس يوتيوب وبوستات السوشيال ميديا يومياً بضغطة زر.\n"
+            "للتحكم محلياً، يمكنك استخدام CLI عبر:\n"
+            "`python main.py run` (تشغيل خطة اليوم)\n"
+            "`python main.py status` (فحص كرت الشاشة والمتصفح)\n"
+            "أو أرسل `/content_run` لتشغيل المهمة من هنا."
+        ),
     }
+
+    if cmd in ["content_run", "run_content"]:
+        try:
+            from core.state_manager import StateManager
+            task = StateManager.create_task(user_goal="تشغيل دورة المحتوى اليومية عبر تليجرام")
+            task_id = task.get("id", "unknown")
+
+            # محاولة الإطلاق في ثريد خلفي محلي
+            import threading
+            def _bg_run():
+                try:
+                    from core.orchestrator import run_content_orchestrator
+                    from core.prompts import DAILY_ROUTINE_PROMPT
+                    run_content_orchestrator(DAILY_ROUTINE_PROMPT)
+                except Exception as e:
+                    print(f"Background run error: {e}")
+
+            threading.Thread(target=_bg_run, daemon=True).start()
+
+            return (
+                f"🚀 *تم إطلاق دورة إنتاج المحتوى اليومي بنجاح!*\n\n"
+                f"🆔 معرف المهمة: `{task_id}`\n"
+                f"⚙️ العقل المدير (Ollama) بدأ تنفيذ الخطوات بكرت RTX 4070.\n\n"
+                f"💡 أرسل `/content_status` في أي وقت لمتابعة التقدم والنتيجة."
+            )
+        except Exception as exc:
+            return f"⚠️ حدث خطأ أثناء إطلاق المهمة: {exc}"
+
+    if cmd == "content_status":
+        try:
+            from memory.supabase_client import get_supabase
+            client = get_supabase()
+            res = client.table("content_tasks").select("id, status, created_at, summary").order("created_at", desc=True).limit(1).execute()
+            if res.data:
+                latest = res.data[0]
+                return (
+                    f"📊 *آخر مهمة إنتاج محتوى:*\n"
+                    f"- الحالة: `{latest.get('status')}`\n"
+                    f"- التاريخ: `{latest.get('created_at')[:19]}`\n"
+                    f"- الملخص: {latest.get('summary') or 'قيد المعالجة'}"
+                )
+            return "ℹ️ لا توجد مهام إنتاج محتوى مسجلة بعد في Supabase."
+        except Exception as exc:
+            return f"⚠️ تعذر جلب حالة المحتوى: {exc}"
 
     return commands.get(cmd, f"❓ أمر مش متعرف عليه: `{text}`\nاكتب /help عشان تشوف الأوامر.")
