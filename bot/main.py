@@ -64,7 +64,8 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # ── Root Welcome Endpoint ─────────────────────────────────
 @app.get("/")
-async def root():
+async def root(request: Request = None):
+    host = request.headers.get("host", "") if request else ""
     return {
         "status": "online",
         "service": "شاهر الثاني — Shaher Brain",
@@ -73,6 +74,12 @@ async def root():
             "health": "/health",
             "setup": "/setup?secret=shaher-setup-2024",
             "webhook": "/webhook (POST)"
+        },
+        "info": {
+            "host": host,
+            "bot_configured": bool(os.getenv("TELEGRAM_BOT_TOKEN")),
+            "gemini_configured": bool(os.getenv("GEMINI_API_KEY_BRAIN")),
+            "supabase_configured": bool(os.getenv("SUPABASE_URL")),
         }
     }
 
@@ -84,7 +91,7 @@ async def health_check():
         "status": "ok",
         "service": "شاهر الثاني",
         "version": "1.0.0",
-        "bot_configured": bool(TELEGRAM_TOKEN),
+        "bot_configured": bool(os.getenv("TELEGRAM_BOT_TOKEN")),
         "supabase_configured": bool(os.getenv("SUPABASE_URL")),
         "gemini_configured": bool(os.getenv("GEMINI_API_KEY_BRAIN")),
     }
@@ -92,22 +99,40 @@ async def health_check():
 
 # ── Webhook Setup (يتشغل مرة واحدة بعد الـ deploy) ───────
 @app.get("/setup")
-async def setup_webhook(secret: str = ""):
+async def setup_webhook(request: Request = None, secret: str = ""):
     """
     يسجل الـ webhook URL في Telegram.
     محمي بـ secret query param عشان ما يتشغلش بشكل عشوائي.
-    مثال: https://your-app.vercel.app/setup?secret=YOUR_SECRET
+    مثال: https://shaher-brain.vercel.app/setup?secret=shaher-setup-2024
     """
+    global bot
     setup_secret = os.getenv("SETUP_SECRET", "shaher-setup-2024")
     if secret != setup_secret:
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise HTTPException(status_code=403, detail="Forbidden: Invalid secret parameter")
+
+    t_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    if not bot and t_token:
+        bot = Bot(token=t_token)
 
     if not bot:
-        raise HTTPException(status_code=500, detail="Bot not configured")
+        return JSONResponse(
+            status_code=400,
+            content={
+                "success": False,
+                "error": "TELEGRAM_BOT_TOKEN is missing in Vercel Environment Variables",
+                "instructions": "Go to Vercel Dashboard -> Project Settings -> Environment Variables, and add TELEGRAM_BOT_TOKEN."
+            }
+        )
 
     webhook_url = os.getenv("WEBHOOK_BASE_URL", "").rstrip("/")
     if not webhook_url:
-        raise HTTPException(status_code=500, detail="WEBHOOK_BASE_URL not set")
+        vercel_url = os.getenv("VERCEL_URL", "")
+        if vercel_url:
+            webhook_url = f"https://{vercel_url.rstrip('/')}"
+        elif request and request.headers.get("host"):
+            webhook_url = f"https://{request.headers.get('host')}"
+        else:
+            webhook_url = "https://shaher-brain.vercel.app"
 
     full_webhook = f"{webhook_url}/webhook"
 

@@ -9,7 +9,7 @@ import os
 import sys
 import traceback
 from pathlib import Path
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
 # إضافة مسار المشروع بالكامل
@@ -45,13 +45,28 @@ async def api_global_exception_handler(request: Request, exc: Exception):
 @app.middleware("http")
 async def normalize_vercel_paths(request: Request, call_next):
     raw_path = request.scope.get("path", "")
-    for prefix in ["/api/index.py", "/api/index", "/api"]:
-        if raw_path == prefix or raw_path == f"{prefix}/":
-            request.scope["path"] = "/"
+    matched_path = request.headers.get("x-matched-path", "")
+    
+    target_path = raw_path
+    if matched_path and not matched_path.startswith("/api/index.py"):
+        target_path = matched_path
+
+    query_route = request.query_params.get("route") or request.query_params.get("endpoint")
+    if query_route:
+        target_path = query_route if query_route.startswith("/") else f"/{query_route}"
+
+    for prefix in ["/api/index.py", "/api/index"]:
+        if target_path == prefix or target_path == f"{prefix}/":
+            target_path = "/"
             break
-        elif raw_path.startswith(f"{prefix}/"):
-            request.scope["path"] = raw_path[len(prefix):]
+        elif target_path.startswith(f"{prefix}/"):
+            target_path = target_path[len(prefix):]
             break
+
+    if "?" in target_path:
+        target_path = target_path.split("?")[0]
+
+    request.scope["path"] = target_path or "/"
     return await call_next(request)
 
 # استيراد وتسجيل المسارات
@@ -72,10 +87,24 @@ try:
         app.add_api_route(f"{pfx}/setup", setup_webhook, methods=["GET"])
         app.add_api_route(f"{pfx}/webhook", telegram_webhook, methods=["POST"])
 
-    # توجيه أي مسار GET غير معروف إلى الصفحة الترحيبية بدلاً من Not Found
+    # توجيه أي مسار GET غير معروف مع كشف /health و /setup
     @app.api_route("/{full_path:path}", methods=["GET"])
-    async def catch_all_get(full_path: str = ""):
-        return await root()
+    async def catch_all_get(request: Request, full_path: str = ""):
+        clean_p = full_path.strip("/")
+        if clean_p in ["health", "api/health"]:
+            return await health_check()
+        elif clean_p in ["setup", "api/setup"]:
+            secret = request.query_params.get("secret", "")
+            return await setup_webhook(request=request, secret=secret)
+        return await root(request=request)
+
+    # توجيه أي طلب POST إلى /webhook
+    @app.api_route("/{full_path:path}", methods=["POST"])
+    async def catch_all_post(request: Request, full_path: str = ""):
+        clean_p = full_path.strip("/")
+        if clean_p in ["webhook", "api/webhook"]:
+            return await telegram_webhook(request)
+        return Response(content="ok", status_code=200)
 
 except Exception as exc:
     err_tb = traceback.format_exc()
