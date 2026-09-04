@@ -37,22 +37,28 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 bot = Bot(token=TELEGRAM_TOKEN) if TELEGRAM_TOKEN else None
 
 
-# ── FastAPI App ──
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    logger.info("🚀 شاهر الثاني — النظام بدأ تشغيله")
-    yield
-    logger.info("🛑 شاهر الثاني — النظام توقف")
-
-
 app = FastAPI(
     title="شاهر الثاني",
     description="Personal AI Operating System",
     version="1.0.0",
-    lifespan=lifespan,
     docs_url=None,   # نخفي Swagger في الإنتاج
     redoc_url=None,
 )
+
+
+# ── Root Welcome Endpoint ─────────────────────────────────
+@app.get("/")
+async def root():
+    return {
+        "status": "online",
+        "service": "شاهر الثاني — Shaher Brain",
+        "message": "البوت السحابي يعمل بكفاءة 100% 🚀",
+        "endpoints": {
+            "health": "/health",
+            "setup": "/setup?secret=shaher-setup-2024",
+            "webhook": "/webhook (POST)"
+        }
+    }
 
 
 # ── Health Check ──────────────────────────────────────────
