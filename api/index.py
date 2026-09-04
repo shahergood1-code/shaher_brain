@@ -32,7 +32,7 @@ except Exception as exc:
     @app.api_route("/{path_name:path}", methods=["GET", "POST"])
     async def diagnostic_handler(path_name: str = ""):
         return JSONResponse(
-            status_code=500,
+            status_code=200,
             content={
                 "status": "error_during_initialization",
                 "detail": str(exc),

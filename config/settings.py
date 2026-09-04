@@ -27,18 +27,21 @@ EXPORTS_DIR = WORKSPACE_DIR / "exports"
 READY_SHORTS_DIR = EXPORTS_DIR / "ready_shorts"
 READY_POSTS_DIR = EXPORTS_DIR / "ready_posts"
 
-# التأكد من وجود كافة المجلدات المطلوبة
-for d in [
-    WORKSPACE_DIR,
-    DOWNLOADS_DIR,
-    RAW_SCENES_DIR,
-    IMAGES_DIR,
-    AUDIO_DIR,
-    EXPORTS_DIR,
-    READY_SHORTS_DIR,
-    READY_POSTS_DIR,
-]:
-    d.mkdir(parents=True, exist_ok=True)
+# التأكد من وجود كافة المجلدات المطلوبة (مع الحماية من أنظمة الملفات للقراءة فقط في السيرفرليس)
+try:
+    for d in [
+        WORKSPACE_DIR,
+        DOWNLOADS_DIR,
+        RAW_SCENES_DIR,
+        IMAGES_DIR,
+        AUDIO_DIR,
+        EXPORTS_DIR,
+        READY_SHORTS_DIR,
+        READY_POSTS_DIR,
+    ]:
+        d.mkdir(parents=True, exist_ok=True)
+except OSError:
+    pass
 
 # ─── 2. كشف FFmpeg وتسريع NVENC (RTX 4070) ───────────────────────
 def get_ffmpeg_path() -> str:

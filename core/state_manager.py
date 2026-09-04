@@ -46,7 +46,10 @@ def _load_local_history() -> List[Dict[str, Any]]:
 
 
 def _save_local_history(data: List[Dict[str, Any]]) -> None:
-    LOCAL_HISTORY_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        LOCAL_HISTORY_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        pass
 
 
 class StateManager:
