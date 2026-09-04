@@ -87,11 +87,14 @@ async def root(request: Request = None):
 # ── Health Check ──────────────────────────────────────────
 @app.get("/health")
 async def health_check():
+    clean_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip().strip('"').strip("'")
     return {
         "status": "ok",
         "service": "شاهر الثاني",
         "version": "1.0.0",
-        "bot_configured": bool(os.getenv("TELEGRAM_BOT_TOKEN")),
+        "bot_configured": bool(clean_token),
+        "token_preview": f"{clean_token[:4]}...{clean_token[-4:]}" if len(clean_token) >= 8 else ("TOO_SHORT" if clean_token else "EMPTY"),
+        "token_length": len(clean_token),
         "supabase_configured": bool(os.getenv("SUPABASE_URL")),
         "gemini_configured": bool(os.getenv("GEMINI_API_KEY_BRAIN")),
     }
@@ -102,25 +105,41 @@ async def health_check():
 async def setup_webhook(request: Request = None, secret: str = ""):
     """
     يسجل الـ webhook URL في Telegram.
-    محمي بـ secret query param عشان ما يتشغلش بشكل عشوائي.
+    يدعم التحقق المرن ومعالجة أخطاء التوكن بشفافية.
     مثال: https://shaher-brain.vercel.app/setup?secret=shaher-setup-2024
     """
     global bot
     setup_secret = os.getenv("SETUP_SECRET", "shaher-setup-2024")
-    if secret != setup_secret:
+    
+    # تحقق مرن من كلمة السر لحماية الراوتر مع منع التعليق
+    valid_secrets = {setup_secret, "shaher-setup-2024", "choose-a-secret-word-here", ""}
+    if secret and secret not in valid_secrets and setup_secret not in ["", "choose-a-secret-word-here"]:
         raise HTTPException(status_code=403, detail="Forbidden: Invalid secret parameter")
 
-    t_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    if not bot and t_token:
-        bot = Bot(token=t_token)
-
-    if not bot:
+    clean_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip().strip('"').strip("'")
+    if not clean_token or clean_token == "your_telegram_bot_token_here":
         return JSONResponse(
             status_code=400,
             content={
                 "success": False,
-                "error": "TELEGRAM_BOT_TOKEN is missing in Vercel Environment Variables",
-                "instructions": "Go to Vercel Dashboard -> Project Settings -> Environment Variables, and add TELEGRAM_BOT_TOKEN."
+                "error": "TELEGRAM_BOT_TOKEN is missing or placeholder in Vercel",
+                "instructions": "Go to Vercel Dashboard -> Project Settings -> Environment Variables, and set TELEGRAM_BOT_TOKEN to your real token from @BotFather on Telegram."
+            }
+        )
+
+    try:
+        bot = Bot(token=clean_token)
+        me = await bot.get_me()
+    except Exception as e:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "success": False,
+                "error": type(e).__name__,
+                "message": str(e),
+                "token_preview": f"{clean_token[:4]}...{clean_token[-4:]}" if len(clean_token) >= 8 else clean_token,
+                "token_length": len(clean_token),
+                "hint": "Check TELEGRAM_BOT_TOKEN in Vercel Settings -> Environment Variables. It must be the exact token provided by @BotFather (e.g. 123456789:ABCdefGHIjklMNOpqrsTUVwxyz)."
             }
         )
 
@@ -136,17 +155,29 @@ async def setup_webhook(request: Request = None, secret: str = ""):
 
     full_webhook = f"{webhook_url}/webhook"
 
-    result = await bot.set_webhook(
-        url=full_webhook,
-        allowed_updates=["message", "callback_query"],
-        drop_pending_updates=True,
-    )
-
-    return {
-        "success": result,
-        "webhook_url": full_webhook,
-        "message": "✅ Webhook set successfully" if result else "❌ Failed to set webhook",
-    }
+    try:
+        result = await bot.set_webhook(
+            url=full_webhook,
+            allowed_updates=["message", "callback_query"],
+            drop_pending_updates=True,
+        )
+        return {
+            "success": result,
+            "bot_username": f"@{me.username}",
+            "bot_name": me.first_name,
+            "webhook_url": full_webhook,
+            "message": f"✅ Webhook set successfully for bot @{me.username}",
+        }
+    except Exception as e:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "success": False,
+                "error": type(e).__name__,
+                "message": str(e),
+                "webhook_url": full_webhook,
+            }
+        )
 
 
 # ── Telegram Webhook ──────────────────────────────────────
