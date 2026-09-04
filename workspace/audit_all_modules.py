@@ -55,7 +55,7 @@ async def run_audit():
         r_chat = route("إزاي أعمل خطة تسويق ناجحة؟")
         assert r_cmd.intent == MessageIntent.COMMAND, f"Expected COMMAND, got {r_cmd.intent}"
         assert r_img.intent == MessageIntent.IMAGE_GENERATION, f"Expected IMAGE_GEN, got {r_img.intent}"
-        assert r_chat.intent == MessageIntent.QUESTION_OR_CHAT, f"Expected CHAT, got {r_chat.intent}"
+        assert r_chat.intent == MessageIntent.GENERAL_CHAT, f"Expected CHAT, got {r_chat.intent}"
         elapsed = int((time.time() - t0) * 1000)
         record("Brain Router", True, "Successfully routed commands, image requests, and chats", elapsed)
     except Exception as e:
@@ -133,7 +133,7 @@ async def run_audit():
     # ── 5. فحص مدير الحالة (State Manager) ─────────────────
     t0 = time.time()
     try:
-        task = StateManager.start_task(task_type="audit_test", user_goal="Test StateManager resilience")
+        task = StateManager.create_task(user_goal="Test StateManager resilience", task_type="audit_test")
         assert task and "id" in task
         elapsed = int((time.time() - t0) * 1000)
         record("State Manager", True, f"State Manager created task successfully: {task['id']}", elapsed)
