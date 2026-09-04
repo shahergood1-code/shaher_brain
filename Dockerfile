@@ -16,7 +16,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # نسخ كود المشروع
 COPY . .
 
+EXPOSE 7860
 EXPOSE 8000
 
-# تشغيل السيرفر على البورت المعين من المنصة السحابية
-CMD ["sh", "-c", "uvicorn bot.main:app --host 0.0.0.0 --port ${PORT}"]
+# تشغيل السيرفر على البورت المعين تلقائياً (7860 لـ HuggingFace أو PORT لأي منصة أخرى)
+CMD ["sh", "-c", "uvicorn bot.main:app --host 0.0.0.0 --port ${PORT:-7860}"]
