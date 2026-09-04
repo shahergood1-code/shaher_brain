@@ -144,7 +144,7 @@ async def setup_webhook(request: Request = None, secret: str = ""):
         )
 
     webhook_url = os.getenv("WEBHOOK_BASE_URL", "").rstrip("/")
-    if not webhook_url:
+    if not webhook_url or "railway.app" in webhook_url or "your-service" in webhook_url:
         vercel_url = os.getenv("VERCEL_URL", "")
         if vercel_url:
             webhook_url = f"https://{vercel_url.rstrip('/')}"
@@ -186,6 +186,12 @@ async def telegram_webhook(request: Request):
     """
     يستقبل كل updates من Telegram ويمررها لـ telegram_handler.
     """
+    global bot
+    if not bot:
+        t_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip().strip('"').strip("'")
+        if t_token:
+            bot = Bot(token=t_token)
+
     if not bot:
         logger.error("Bot not configured — missing TELEGRAM_BOT_TOKEN")
         return Response(content="ok", status_code=200)
