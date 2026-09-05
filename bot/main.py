@@ -182,6 +182,7 @@ async def setup_webhook(request: Request = None, secret: str = ""):
 async def telegram_webhook(request: Request):
     """
     يستقبل كل updates من Telegram ويمررها لـ telegram_handler.
+    يرد بـ 200 فوراً ويعالج في الخلفية — ضروري على Vercel (timeout 10s)
     """
     global bot
     if not bot:
@@ -200,15 +201,31 @@ async def telegram_webhook(request: Request):
         logger.error(f"Failed to parse Telegram update: {e}")
         return Response(content="ok", status_code=200)
 
-    # نعالج الـ update في الخلفية (non-blocking) عشان نرد فورًا بـ 200
-    # Telegram بيعيد الإرسال لو مرجعلوش 200 خلال 10 ثواني
-    try:
-        from bot.telegram_handler import handle_update
-        await handle_update(update_data, bot)
-    except Exception as e:
-        logger.error(f"Error handling update: {e}", exc_info=True)
+    # ── معالجة في الخلفية لتجنب Vercel 10s timeout ──
+    # نرد بـ 200 فوراً لـ Telegram ثم نعالج في thread خلفي
+    import asyncio
+    import threading
 
-    # لازم نرد بـ 200 دايمًا حتى لو فيه error
+    _bot = bot
+    _update = update_data
+
+    def _process_in_thread():
+        """تشغيل المعالجة في thread منفصل بـ event loop مستقل."""
+        try:
+            from bot.telegram_handler import handle_update
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(handle_update(_update, _bot))
+            finally:
+                loop.close()
+        except Exception as bg_err:
+            logger.error(f"Background update processing error: {bg_err}", exc_info=True)
+
+    t = threading.Thread(target=_process_in_thread, daemon=True)
+    t.start()
+
+    # رد فوري بـ 200 قبل ما Telegram يعيد المحاولة
     return Response(content="ok", status_code=200)
 
 

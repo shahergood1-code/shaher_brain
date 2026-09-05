@@ -196,9 +196,10 @@ def _build_messages(user_message: str, history: list[dict], system: str) -> list
 
 
 # ─── Timeouts & Performance Settings ──────────────────────────────
-GEMINI_TIMEOUT_SECONDS = float(os.getenv("GEMINI_TIMEOUT", "15.0"))
-SEEKAI_TIMEOUT_SECONDS = float(os.getenv("SEEKAI_TIMEOUT", "30.0"))
+GEMINI_TIMEOUT_SECONDS = float(os.getenv("GEMINI_TIMEOUT", "8.0"))
+SEEKAI_TIMEOUT_SECONDS = float(os.getenv("SEEKAI_TIMEOUT", "15.0"))
 DUCKAI_TIMEOUT_SECONDS = float(os.getenv("DUCKAI_TIMEOUT", "4.5"))
+
 
 
 # ─── Source 1: Gemini Official ────────────────────────────
@@ -217,8 +218,8 @@ async def _try_gemini(
 
     pref_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
-    candidate_models = [pref_model, "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash", "gemini-2.5-flash"]
-    models_to_try = list(dict.fromkeys([m for m in candidate_models if m]))
+    candidate_models = list(dict.fromkeys([pref_model, "gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-flash"]))
+
 
     chat_history = []
     for item in history[-8:]:
@@ -228,7 +229,7 @@ async def _try_gemini(
             chat_history.append({"role": "model", "parts": [item["ai_response"]]})
 
     last_err = None
-    for model_name in models_to_try:
+    for model_name in candidate_models:
         try:
             model = genai.GenerativeModel(
                 model_name=model_name,
@@ -256,6 +257,7 @@ async def _try_gemini(
             print(f"[WARN] Gemini model '{model_name}' failed: {exc} -- trying next candidate...")
 
     raise last_err or Exception("All Gemini candidate models failed")
+
 
 
 # ─── Source 2: SeekAI (المحرك الأساسي للذكاء العربي الفصيح) ────────────
@@ -479,13 +481,18 @@ class SmartAIRouter:
     - يحدّث متوسط السرعة بعد كل استجابة ناجحة
     """
     def __init__(self):
+        # ── على Vercel: NVIDIA (مضمون) > Gemini (ممكن) > SeekAI (503) ──
+        # ── محلياً: Ollama (RTX 4070) > NVIDIA > Gemini > SeekAI ──
+        is_cloud = not is_ollama_online()
         self.stats = {
-            "seekai":     {"avg_latency": 1200, "fails": 0, "cooldown_until": 0, "tier": 1},
-            "gemini":     {"avg_latency": 1500, "fails": 0, "cooldown_until": 0, "tier": 1},
-            "ollama":     {"avg_latency": 800,  "fails": 0, "cooldown_until": 0, "tier": 1},
-            "nvidia_nim": {"avg_latency": 1100, "fails": 0, "cooldown_until": 0, "tier": 1},
+            "ollama":     {"avg_latency": 400 if not is_cloud else 99999, "fails": 0, "cooldown_until": 0, "tier": 1},
+            "nvidia_nim": {"avg_latency": 700,  "fails": 0, "cooldown_until": 0, "tier": 1},
+            "gemini":     {"avg_latency": 900,  "fails": 0, "cooldown_until": 0, "tier": 1},
+            "seekai":     {"avg_latency": 1500, "fails": 0, "cooldown_until": 0, "tier": 1},
             "duckai":     {"avg_latency": 4000, "fails": 0, "cooldown_until": 0, "tier": 2},
         }
+
+
 
     def record_success(self, provider: str, latency_ms: int):
         if provider in self.stats:

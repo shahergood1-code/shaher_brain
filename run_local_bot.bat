@@ -1,33 +1,36 @@
 @echo off
+cd /d "%~dp0"
 chcp 65001 >nul
-title شاهر الثاني - المشغل المحلي للتيليجرام (0$ بدون سيرفرات)
+title Shaher II OS - Local Bot Runner (RTX 4070)
 color 0A
 
 echo ======================================================================
-echo          🤖 شاهر الثاني — نظام التشغيل المحلي المباشر 🤖
-echo    تشغيل التيليجرام محلياً عبر Polling (مجاني 100%% - RTX 4070 + Ollama)
+echo    [Shaher II OS] - Autonomous Content Engine and Telegram Runner
+echo    RTX 4070 + Faster-Whisper + Ollama Local Engine (0$ Cost)
 echo ======================================================================
 echo.
 
-:: فحص مسار بايثون
+:: Detect Python Path
 set "PYTHON_EXE=python"
 where %PYTHON_EXE% >nul 2>nul
 if %errorlevel% neq 0 (
     if exist "C:\Program Files\Python312\python.exe" (
         set "PYTHON_EXE=C:\Program Files\Python312\python.exe"
+    ) else if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" (
+        set "PYTHON_EXE=%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
     )
 )
 
-echo [1/2] جاري تشغيل البوت والاتصال بتليجرام...
-echo [2/2] لإيقاف البوت في أي وقت، اضغط Ctrl + C
+echo [*] Starting Shaher II Local Telegram Polling...
+echo [*] Press Ctrl+C in this window to stop the bot.
 echo ----------------------------------------------------------------------
 echo.
 
 :loop
-"%PYTHON_EXE%" bot/run_polling.py
+"%PYTHON_EXE%" bot\run_polling.py
 if %errorlevel% neq 0 (
     echo.
-    echo ⚠️ حدث انقطاع أو خطأ في الاتصال. إعادة المحاولة خلال 5 ثوانٍ...
+    echo [*] Process interrupted or disconnected. Retrying in 5 seconds...
     timeout /t 5 >nul
     goto loop
 )
