@@ -6,20 +6,20 @@ memory/logger.py
 """
 
 import time
-from typing import Optional
+
 from memory.supabase_client import get_supabase
 
 # ── In-Memory TTL Cache ──────────────────────────────
 # تخزين مؤقت للبيانات شبه الثابتة لتقليل زمن الاستعلام (Latency) من ~600ms إلى ~0ms
 _CACHE_TTL_SECONDS = 300  # 5 دقائق
 
-_cached_preferences: Optional[dict] = None
+_cached_preferences: dict | None = None
 _cached_preferences_ts: float = 0.0
 
-_cached_projects: Optional[list] = None
+_cached_projects: list | None = None
 _cached_projects_ts: float = 0.0
 
-_cached_decisions: Optional[list] = None
+_cached_decisions: list | None = None
 _cached_decisions_ts: float = 0.0
 
 
@@ -35,13 +35,13 @@ async def log_interaction(
     user_message: str,
     ai_response: str,
     ai_source: str,
-    ai_model: Optional[str] = None,
+    ai_model: str | None = None,
     message_type: str = "text",
-    telegram_user_id: Optional[int] = None,
-    telegram_chat_id: Optional[int] = None,
-    response_time_ms: Optional[int] = None,
-    tokens_used: Optional[int] = None,
-    error_details: Optional[str] = None,
+    telegram_user_id: int | None = None,
+    telegram_chat_id: int | None = None,
+    response_time_ms: int | None = None,
+    tokens_used: int | None = None,
+    error_details: str | None = None,
 ) -> None:
     """
     بيسجل التفاعل في جدول interactions في Supabase.
@@ -85,9 +85,8 @@ async def get_recent_context(limit: int = 10) -> list[dict]:
         return []
 
 
-async def get_preference(key: str) -> Optional[dict]:
+async def get_preference(key: str) -> dict | None:
     """بيجيب تفضيل معين من الذاكرة الدائمة (أو الكاش إن وجد)."""
-    global _cached_preferences
     if _cached_preferences is not None and key in _cached_preferences:
         return {"value": _cached_preferences[key], "description": None}
         
@@ -105,9 +104,8 @@ async def get_preference(key: str) -> Optional[dict]:
         return None
 
 
-async def set_preference(key: str, value, description: Optional[str] = None) -> None:
+async def set_preference(key: str, value, description: str | None = None) -> None:
     """بيحفظ أو يحدث تفضيل في الذاكرة الدائمة ويحدث الكاش."""
-    global _cached_preferences
     try:
         db = get_supabase()
         db.table("preferences").upsert({
@@ -148,7 +146,7 @@ async def get_full_context() -> dict:
 
     try:
         db = get_supabase()
-    except Exception as exc:
+    except Exception:
         # لو السيرفر السحابي مش متصل أو المفاتيح مش موجودة، نرجع سياق نظيف
         return ctx
 

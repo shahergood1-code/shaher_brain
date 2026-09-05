@@ -9,6 +9,7 @@ import os
 import sys
 import traceback
 from pathlib import Path
+
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
@@ -72,8 +73,8 @@ async def normalize_vercel_paths(request: Request, call_next):
 # استيراد وتسجيل المسارات
 try:
     from bot.main import (
-        root,
         health_check,
+        root,
         setup_webhook,
         telegram_webhook,
     )

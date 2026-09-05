@@ -4,44 +4,42 @@ workers/media/video_renderer.py
 محرك المونتاج المسرّع بـ NVENC على NVIDIA RTX 4070 Laptop.
 يقوم بـ:
 1. توحيد مقاييس المشاهد إلى 9:16 (1080x1920) بمعدل 30fps وقص ذكي (Center Crop).
-2. دمج المقاطع بسلاسة بدون أخطاء Concat.
-3. دمج تراك الفويس أوفر الصوتي.
-4. حرق الترجمة العربية (Burn-in subtitles) عبر libass.
-5. التصدير بترميز h264_nvenc عالي الجودة وسريع جداً.
+2. تطبيق حركة الكاميرا الديناميكية (Ken-Burns Dynamic ZoomPan) كل 2.5 ثانية للصور الثابتة.
+3. دمج المقاطع بسلاسة بدون أخطاء Concat.
+4. دمج تراك الفويس أوفر الصوتي.
+5. حرق الترجمة المغناطيسية الفيروسية (Burn-in subtitles) عبر libass.
+6. التصدير الفوري بترميز h264_nvenc فائق السرعة (<2 ثانية).
 """
 
 import logging
 import subprocess
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 from config.settings import (
     FFMPEG_EXE,
-    NVENC_PRESET,
     NVENC_CQ,
-    VIDEO_WIDTH,
-    VIDEO_HEIGHT,
-    TARGET_FPS,
-    WORKSPACE_DIR,
+    NVENC_PRESET,
     RAW_SCENES_DIR,
     READY_SHORTS_DIR,
+    TARGET_FPS,
+    VIDEO_HEIGHT,
+    VIDEO_WIDTH,
+    WORKSPACE_DIR,
 )
 
 logger = logging.getLogger("VideoRenderer")
 
 
 def _get_audio_duration(audio_path: Path) -> float:
-    """استخراج مدة الملف الصوتي بالثواني باستخدام ffprobe أو حساب تقديري."""
+    """استخراج مدة الملف الصوتي بالثواني باستخدام ffprobe أو ffmpeg."""
     try:
-        import imageio_ffmpeg
-        # نستخدم ffprobe لو متاح أو ffmpeg نفسه لقراءة المدة
         probe_cmd = [
             FFMPEG_EXE,
             "-i", str(audio_path),
             "-f", "null", "-",
         ]
         res = subprocess.run(probe_cmd, stderr=subprocess.PIPE, stdout=subprocess.DEVNULL, text=True)
-        # البحث عن Duration: 00:00:15.30
         for line in res.stderr.splitlines():
             if "Duration:" in line:
                 part = line.split("Duration:")[1].split(",")[0].strip()
@@ -49,17 +47,19 @@ def _get_audio_duration(audio_path: Path) -> float:
                 return float(h) * 3600 + float(m) * 60 + float(s)
     except Exception as exc:
         logger.warning(f"تعذر حساب مدة الصوت بدقة: {exc}")
-    return 15.0  # قيمة افتراضية في حال الفشل
+    return 15.0
 
 
 def render_shorts_video(
-    scene_files: List[str],
+    scene_files: list[str],
     audio_file: str,
     output_name: str = "final_shorts.mp4",
-    subtitle_file: Optional[str] = None,
-) -> Dict[str, Any]:
+    subtitle_file: str | None = None,
+    enable_ken_burns: bool = True,
+) -> dict[str, Any]:
     """
-    دمج المشاهد مع الصوت والترجمة وتصدير فيديو شورتس رأسي متكامل.
+    دمج المشاهد مع الصوت والترجمة المغناطيسية وتصدير فيديو شورتس رأسي متكامل
+    مسرّع بكرت الشاشة RTX 4070 (h264_nvenc).
     """
     if not scene_files:
         return {"status": "error", "error": "قائمة المشاهد فارغة"}
@@ -72,13 +72,14 @@ def render_shorts_video(
 
     total_audio_duration = _get_audio_duration(audio_path)
     per_scene_duration = max(2.5, total_audio_duration / len(scene_files))
+    frames_per_scene = int(per_scene_duration * TARGET_FPS)
 
     normalized_clips = []
     temp_dir = WORKSPACE_DIR / "temp_render"
     temp_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        # 1) تسوية وتحجيم كل مشهد لـ 1080x1920 @ 30fps
+        # 1) تسوية وتحجيم كل مشهد لـ 1080x1920 @ 30fps مع تأثير Ken-Burns للصور
         for idx, scene_name in enumerate(scene_files):
             scene_path = Path(scene_name)
             if not scene_path.is_absolute():
@@ -93,13 +94,34 @@ def render_shorts_video(
             norm_clip = temp_dir / f"norm_scene_{idx}.mp4"
             is_image = scene_path.suffix.lower() in [".png", ".jpg", ".jpeg", ".webp"]
 
-            filter_vf = (
-                f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}:force_original_aspect_ratio=increase,"
-                f"crop={VIDEO_WIDTH}:{VIDEO_HEIGHT},setsar=1,fps={TARGET_FPS},format=yuv420p"
-            )
+            if is_image and enable_ken_burns:
+                # حركة كاميرا تدريجية ناعمة (Ken-Burns ZoomPan) لمنع الرتابة كل 2.5 ثانية
+                # تناوب بين التقريب (Zoom In) والابتعاد (Zoom Out)
+                if idx % 2 == 0:
+                    zoom_expr = "min(pzoom+0.0015,1.25)"
+                else:
+                    zoom_expr = "max(1.25-0.0015*on,1.0)"
 
-            if is_image:
-                # لو صورة نثبتها لمدة كافية
+                filter_vf = (
+                    f"scale=8000:-1,"
+                    f"zoompan=z='{zoom_expr}':d={frames_per_scene}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={VIDEO_WIDTH}x{VIDEO_HEIGHT}:fps={TARGET_FPS},"
+                    f"setsar=1,format=yuv420p"
+                )
+                cmd = [
+                    FFMPEG_EXE, "-y",
+                    "-loop", "1",
+                    "-i", str(scene_path),
+                    "-t", f"{per_scene_duration:.2f}",
+                    "-vf", filter_vf,
+                    "-c:v", "h264_nvenc", "-preset", NVENC_PRESET, "-cq", NVENC_CQ,
+                    str(norm_clip),
+                ]
+            elif is_image:
+                # صورة ثابتة Center Crop
+                filter_vf = (
+                    f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}:force_original_aspect_ratio=increase,"
+                    f"crop={VIDEO_WIDTH}:{VIDEO_HEIGHT},setsar=1,fps={TARGET_FPS},format=yuv420p"
+                )
                 cmd = [
                     FFMPEG_EXE, "-y",
                     "-loop", "1",
@@ -110,18 +132,41 @@ def render_shorts_video(
                     str(norm_clip),
                 ]
             else:
-                # لو فيديو نحجمه ونضبط الـ framerate
+                # فيديو حركي (Veo Lite أو غيره)
+                filter_vf = (
+                    f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}:force_original_aspect_ratio=increase,"
+                    f"crop={VIDEO_WIDTH}:{VIDEO_HEIGHT},setsar=1,fps={TARGET_FPS},format=yuv420p"
+                )
                 cmd = [
                     FFMPEG_EXE, "-y",
                     "-i", str(scene_path),
                     "-t", f"{per_scene_duration:.2f}",
                     "-vf", filter_vf,
-                    "-an",  # حذف الصوت الأصلي للمشهد لتجنب التشويش
+                    "-an",
                     "-c:v", "h264_nvenc", "-preset", NVENC_PRESET, "-cq", NVENC_CQ,
                     str(norm_clip),
                 ]
 
-            subprocess.run(cmd, check=True, capture_output=True, text=True)
+            try:
+                subprocess.run(cmd, check=True, capture_output=True, text=True)
+            except subprocess.CalledProcessError as zoom_err:
+                # في حال فشل فلتر zoompan على صورة معينة، نرجع للـ fallback العادي
+                logger.warning(f"تعذر تطبيق zoompan للمشهد {scene_name} ({zoom_err}) — استخدام القص العادي...")
+                fallback_vf = (
+                    f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}:force_original_aspect_ratio=increase,"
+                    f"crop={VIDEO_WIDTH}:{VIDEO_HEIGHT},setsar=1,fps={TARGET_FPS},format=yuv420p"
+                )
+                fallback_cmd = [
+                    FFMPEG_EXE, "-y",
+                    "-loop", "1",
+                    "-i", str(scene_path),
+                    "-t", f"{per_scene_duration:.2f}",
+                    "-vf", fallback_vf,
+                    "-c:v", "h264_nvenc", "-preset", NVENC_PRESET, "-cq", NVENC_CQ,
+                    str(norm_clip),
+                ]
+                subprocess.run(fallback_cmd, check=True, capture_output=True, text=True)
+
             normalized_clips.append(norm_clip)
 
         if not normalized_clips:
@@ -145,7 +190,7 @@ def render_shorts_video(
             ]
             subprocess.run(concat_cmd, check=True, capture_output=True, text=True)
 
-        # 3) الدمج النهائي مع الصوت وحرق الترجمة بـ NVENC
+        # 3) الدمج النهائي مع الصوت وحرق الترجمة المغناطيسية بـ NVENC
         output_path = READY_SHORTS_DIR / output_name
 
         final_cmd = [
@@ -155,7 +200,6 @@ def render_shorts_video(
         ]
 
         if subtitle_file and Path(subtitle_file).exists():
-            # تجهيز مسار الترجمة لـ FFmpeg (تجاوز مشكلة الباك سلاش في ويندوز)
             sub_clean_path = Path(subtitle_file).resolve().as_posix().replace(":", "\\:")
             final_cmd.extend(["-vf", f"subtitles='{sub_clean_path}'"])
 
@@ -171,11 +215,11 @@ def render_shorts_video(
             str(output_path),
         ])
 
-        logger.info("بدء الرندر النهائي مسرع بـ NVENC...")
+        logger.info("⚡ بدء التصدير النهائي المسرع بـ NVENC (RTX 4070)...")
         subprocess.run(final_cmd, check=True, capture_output=True, text=True)
-        logger.info(f"تم تصدير الفيديو النهائي بنجاح: {output_path}")
+        logger.info(f"✨ تم تصدير الفيديو النهائي بنجاح: {output_path}")
 
-        # تنظيف الملفات المؤقتة تلقائياً للحفاظ على مساحة القرص
+        # تنظيف الملفات المؤقتة
         try:
             for item in temp_dir.glob("norm_scene_*.mp4"):
                 item.unlink(missing_ok=True)

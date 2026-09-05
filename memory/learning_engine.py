@@ -12,12 +12,11 @@ memory/learning_engine.py
   3. حقن ما تم تعلمه تلقائياً في System Prompt لكل محادثة قادمة.
 """
 
-import json
 import asyncio
-from typing import Optional
-from memory.supabase_client import get_supabase
-from memory.logger import set_preference, get_preference, invalidate_context_cache
+import json
 
+from memory.logger import invalidate_context_cache, set_preference
+from memory.supabase_client import get_supabase
 
 # ─── الفحص والاستخراج الذكي للمعرفة ────────────────────────
 
@@ -42,8 +41,9 @@ async def auto_learn_from_interaction(user_message: str, ai_response: str) -> No
 
     # استخراج الدرس أو التفضيل باستخدام استدعاء سريع
     try:
-        from brain.ai_client import _try_seekai, _try_nvidia, SEEKAI_MODELS
         import os
+
+        from brain.ai_client import _try_nvidia, _try_seekai
 
         prompt = f"""أنت محلل ذاكرة ذكية. مهمتك تحليل رسالة المستخدم واستخراج أي معلومة جديدة تخص تفضيلاته، شخصيته، مشاريعه، أو تصحيح لأسلوبك.
 
@@ -110,7 +110,7 @@ async def auto_learn_from_interaction(user_message: str, ai_response: str) -> No
             print(f"🧠 [AUTO-LEARNING SUCCESS] شاهر تعلّم معلومة جديدة: [{key}] -> {insight}")
             invalidate_context_cache()
 
-    except Exception as e:
+    except Exception:
         # فشل صامت في الخلفية دون التأثير على المستخدم
         pass
 

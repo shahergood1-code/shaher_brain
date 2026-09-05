@@ -16,11 +16,11 @@ Fallback AI Chain & Multi-Model Engine لشاهر الثاني.
   شاهر شايف "عالمك" كامل في كل رسالة.
 """
 
+import asyncio
 import os
 import time
-import asyncio
-from typing import Optional
 from dataclasses import dataclass
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -91,7 +91,7 @@ def _build_system_prompt(ctx: dict) -> str:
     tz = prefs.get("timezone", "Africa/Cairo")
 
     # ── الشخصية الأساسية ──
-    prompt = f"""أنت شاهر — المساعد الشخصي الذكي لـ {owner}.
+    prompt = f"""أنت شاهر — {personality} لـ {owner}.
 
 أسلوبك وطبيعتك:
 - تتكلم بلهجة مصرية ذكية وطبيعية ولطيفة جداً، زي أي صديق مصري ذكي ومحترف.
@@ -179,8 +179,8 @@ class AIResponse:
     source: str        # 'gemini' | 'seekai' | 'duckai' | 'error'
     model: str
     response_time_ms: int
-    tokens_used: Optional[int] = None
-    error: Optional[str] = None
+    tokens_used: int | None = None
+    error: str | None = None
 
 
 def _build_messages(user_message: str, history: list[dict], system: str) -> list[dict]:
@@ -215,9 +215,9 @@ async def _try_gemini(
     start = time.time()
     genai.configure(api_key=api_key)
 
-    pref_model = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+    pref_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
-    candidate_models = [pref_model, "gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.0-flash"]
+    candidate_models = [pref_model, "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash", "gemini-2.5-flash"]
     models_to_try = list(dict.fromkeys([m for m in candidate_models if m]))
 
     chat_history = []
@@ -334,7 +334,7 @@ async def _try_nvidia(
             messages=messages,
             max_tokens=2048,
         ),
-        timeout=12.0
+        timeout=25.0
     )
 
     elapsed = int((time.time() - start) * 1000)
@@ -525,6 +525,7 @@ async def get_ai_response(
     component: str = "brain",
     seekai_model: str | None = None,
     preferred_source: str | None = None,
+    system_prompt: str | None = None,
 ) -> AIResponse:
     """
     الدالة الرئيسية — تختار ديناميكياً أسرع وأفضل مزود في الوقت الفعلي:
@@ -535,7 +536,8 @@ async def get_ai_response(
     if context is None:
         context = {}
 
-    system_prompt = _build_system_prompt(context) if context else _STATIC_SYSTEM_PROMPT
+    if not system_prompt:
+        system_prompt = _build_system_prompt(context) if context else _STATIC_SYSTEM_PROMPT
     history = context.get("recent_messages", [])
     errors = []
 
@@ -706,7 +708,7 @@ def _generate_emergency_response(user_message: str, errors: list[str]) -> AIResp
     # 4. الرد الذكي العام
     else:
         content = (
-            f"أنا سامعك ومركز معاك جداً بخصوص استفسارك 💡\n\n"
+            "أنا سامعك ومركز معاك جداً بخصوص استفسارك 💡\n\n"
             "وضحلي أكتر التفاصيل أو النتيجة اللي عايز توصلها وهبدأ معاك فوراً خطوة بخطوة بأفضل طريقة ممكنة!"
         )
 

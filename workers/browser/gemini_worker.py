@@ -7,16 +7,16 @@ workers/browser/gemini_worker.py
 
 import logging
 import time
-from typing import Dict, Any, Optional
+from typing import Any
 
-from config.settings import PINNED_CHATS
 from config.selectors import GEMINI_SELECTORS
+from config.settings import PINNED_CHATS
 from workers.browser.cdp_client import get_cdp_manager
 
 logger = logging.getLogger("GeminiWorker")
 
 
-def ask_gemini_browser(pinned_chat_key: str, prompt: str) -> Dict[str, Any]:
+def ask_gemini_browser(pinned_chat_key: str, prompt: str) -> dict[str, Any]:
     """
     إرسال برومبت لمحادثة جيمناي المثبتة بالمتصفح واسترجاع الرد.
     """
@@ -98,13 +98,14 @@ def ask_gemini_browser(pinned_chat_key: str, prompt: str) -> Dict[str, Any]:
                 pass
 
 
-def _fallback_to_brain_ai(prompt: str, fallback_reason: str) -> Dict[str, Any]:
+def _fallback_to_brain_ai(prompt: str, fallback_reason: str) -> dict[str, Any]:
     """
     التحول التلقائي لسلسلة الذكاء الاصطناعي في المرحلة الأولى (brain/ai_client).
     """
     try:
         import asyncio
         import concurrent.futures
+
         from brain.ai_client import get_ai_response
 
         coro = get_ai_response(user_message=prompt, component="brain")

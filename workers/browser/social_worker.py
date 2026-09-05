@@ -7,11 +7,14 @@ workers/browser/social_worker.py
 
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any
 
-from config.selectors import YOUTUBE_STUDIO_SELECTORS, TIKTOK_SELECTORS, INSTAGRAM_SELECTORS
+from config.selectors import (
+    INSTAGRAM_SELECTORS,
+    TIKTOK_SELECTORS,
+    YOUTUBE_STUDIO_SELECTORS,
+)
 from workers.browser.cdp_client import get_cdp_manager
-from core.state_manager import StateManager
 
 logger = logging.getLogger("SocialWorker")
 
@@ -20,9 +23,9 @@ def post_to_social_platform(
     platform: str,
     file_path: str,
     caption: str,
-    title: Optional[str] = None,
-    task_id: Optional[str] = None,
-) -> Dict[str, Any]:
+    title: str | None = None,
+    task_id: str | None = None,
+) -> dict[str, Any]:
     """
     رفع ونشر الفيديو أو الصورة على المنصة المختارة.
     """
@@ -141,7 +144,7 @@ def post_to_social_platform(
                 pass
 
 
-def scrape_24h_stats(platform: str, post_id: Optional[str] = None) -> Dict[str, Any]:
+def scrape_24h_stats(platform: str, post_id: str | None = None) -> dict[str, Any]:
     """
     قراءة مقاييس المشاهدات والاحتفاظ بعد 24 ساعة من استوديو المنصة وتسجيلها في Supabase.
     """

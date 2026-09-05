@@ -7,8 +7,10 @@ Singleton client للتعامل مع Supabase.
 
 import os
 from functools import lru_cache
-from supabase import create_client, Client
+
 from dotenv import load_dotenv
+
+from supabase import Client, create_client
 
 load_dotenv()
 
@@ -23,7 +25,7 @@ def get_supabase() -> Client:
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
 
     if not url or not key:
-        raise EnvironmentError(
+        raise OSError(
             "❌ SUPABASE_URL و SUPABASE_SERVICE_ROLE_KEY (أو SUPABASE_ANON_KEY) "
             "لازم يكونوا موجودين في ملف .env"
         )

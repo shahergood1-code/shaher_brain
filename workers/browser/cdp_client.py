@@ -8,10 +8,17 @@ workers/browser/cdp_client.py
 
 import logging
 import socket
-from typing import Optional, Tuple
-from playwright.sync_api import sync_playwright, Playwright, Browser, BrowserContext, Page
+from typing import Optional
 
-from config.settings import CHROME_CDP_URL, CHROME_CDP_PORT
+from playwright.sync_api import (
+    Browser,
+    BrowserContext,
+    Page,
+    Playwright,
+    sync_playwright,
+)
+
+from config.settings import CHROME_CDP_PORT, CHROME_CDP_URL
 
 logger = logging.getLogger("CDPClient")
 
@@ -29,9 +36,9 @@ class CDPSessionManager:
     _instance: Optional["CDPSessionManager"] = None
 
     def __init__(self):
-        self._playwright: Optional[Playwright] = None
-        self._browser: Optional[Browser] = None
-        self._context: Optional[BrowserContext] = None
+        self._playwright: Playwright | None = None
+        self._browser: Browser | None = None
+        self._context: BrowserContext | None = None
 
     @classmethod
     def get_instance(cls) -> "CDPSessionManager":

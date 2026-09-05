@@ -11,10 +11,10 @@ workspace/audit_all_modules.py
 7. مسارات السيرفر (FastAPI Cloud Endpoints)
 """
 
+import asyncio
 import os
 import sys
 import time
-import asyncio
 from pathlib import Path
 
 # إجبار التيرمينال على دعم UTF-8 في ويندوز
@@ -24,15 +24,23 @@ if hasattr(sys.stdout, "reconfigure"):
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
-from brain.router import route, MessageIntent, handle_command
-from brain.ai_client import get_ai_response, _try_gemini, _try_nvidia, _try_ollama, is_ollama_online
-from brain.image_client import detect_format, clean_prompt, generate_image
-from memory.logger import get_full_context, log_interaction
-from core.state_manager import StateManager
-from api.index import app
 from fastapi.testclient import TestClient
+
+from api.index import app
+from brain.ai_client import (
+    _try_gemini,
+    _try_nvidia,
+    _try_ollama,
+    get_ai_response,
+    is_ollama_online,
+)
+from brain.image_client import clean_prompt, detect_format, generate_image
+from brain.router import MessageIntent, route
+from core.state_manager import StateManager
+from memory.logger import get_full_context
 
 results = []
 

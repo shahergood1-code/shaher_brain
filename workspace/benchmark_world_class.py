@@ -11,9 +11,9 @@ workspace/benchmark_world_class.py
 6. الجدوى الاقتصادية ومقارنة التكلفة مقابل منصات SaaS العالمية.
 """
 
+import asyncio
 import sys
 import time
-import asyncio
 from pathlib import Path
 
 # إجبار التيرمينال على دعم UTF-8 في ويندوز
@@ -22,12 +22,12 @@ if hasattr(sys.stdout, "reconfigure"):
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from config.settings import WORKSPACE_DIR, RAW_SCENES_DIR, IMAGES_DIR, AUDIO_DIR, READY_SHORTS_DIR
+from brain.ai_client import get_ollama_response, is_ollama_online
+from config.settings import IMAGES_DIR
 from utils.gpu_guard import get_gpu_memory_status
-from workers.media.tts_worker import generate_voiceover
 from workers.media.subtitle_worker import generate_subtitles
+from workers.media.tts_worker import generate_voiceover
 from workers.media.video_renderer import render_shorts_video
-from brain.ai_client import is_ollama_online, get_ai_response, get_ollama_response, router
 
 
 def print_separator(char="=", length=75):
@@ -48,7 +48,7 @@ async def run_world_class_benchmarks():
     # Benchmark 1: كرت الشاشة والموارد قبل الضغط
     # ─────────────────────────────────────────────────────────────
     gpu_initial = get_gpu_memory_status()
-    print(f"📌 [العتاد الأولي] كرت الشاشة: NVIDIA GeForce RTX 4070 Laptop")
+    print("📌 [العتاد الأولي] كرت الشاشة: NVIDIA GeForce RTX 4070 Laptop")
     print(f"   الذاكرة المتاحة: {gpu_initial.get('free_mb', 0):.0f} MB / {gpu_initial.get('total_mb', 8188):.0f} MB")
     print(f"   درجة الحرارة: {gpu_initial.get('temperature_c', 40):.1f}°C")
     print()
@@ -107,9 +107,9 @@ async def run_world_class_benchmarks():
             }
             print(f"   ⏱️ زمن التفريغ والمحاذاة: {whisper_elapsed:.2f} ثانية لمقطع {whisper_duration:.2f} ثانية")
             print(f"   ⚡ معامل السرعة (RTF): {whisper_rtf:.3f}x (تفريغ أسرع من الحقيقي بـ {1/whisper_rtf:.1f} مرة)")
-            print(f"   🛡️ استهلاك VRAM: 0 MB (يعمل على أنوية الأداء لمعالج i7 لتوفير كرت الشاشة بالكامل)")
+            print("   🛡️ استهلاك VRAM: 0 MB (يعمل على أنوية الأداء لمعالج i7 لتوفير كرت الشاشة بالكامل)")
             print("   🌐 المعيار العالمي (OpenAI Whisper Cloud API): متوسط استجابة 3.5 - 6 ثوانٍ مع انتظار الشبكة.")
-            print(f"   🏅 النتيجة: شاهر ينجز التفريغ محلياً بدون إرسال الصوت لسيرفرات خارجية وبسرعة مضاعفة!")
+            print("   🏅 النتيجة: شاهر ينجز التفريغ محلياً بدون إرسال الصوت لسيرفرات خارجية وبسرعة مضاعفة!")
         else:
             print(f"   ❌ فشل Whisper: {sub_res.get('error')}")
     print()
@@ -178,7 +178,7 @@ async def run_world_class_benchmarks():
             print(f"   📝 حجم النص المُولد: {char_count} حرف (~{est_tokens} Tokens)")
             print(f"   🚀 معدل التوليد: {tps:.1f} Tokens/Second على كرت الشاشة المحلي")
             print("   🌐 المعيار العالمي (Cloud LLM APIs): يتراوح بين 35 إلى 65 TPS مع إضافة زمن تأخير الشبكة (Ping).")
-            print(f"   🏅 النتيجة: الموديل المحلي يعمل بنفس سرعة النماذج السحابية وبدون إنترنت وبدون قيود Rate Limits!")
+            print("   🏅 النتيجة: الموديل المحلي يعمل بنفس سرعة النماذج السحابية وبدون إنترنت وبدون قيود Rate Limits!")
         else:
             print(f"   ⚠️ استجاب بمصدر مختلف: {ollama_res.source}")
     else:

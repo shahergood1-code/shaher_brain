@@ -5,11 +5,12 @@ bot/run_polling.py
 مجاني 100% ويعمل مباشرة على جهازك مستفيداً من الـ RTX 4070 و Ollama المحلي!
 """
 
-import os
-import sys
 import asyncio
 import logging
+import os
+import sys
 from pathlib import Path
+
 from dotenv import load_dotenv
 from telegram import Bot
 

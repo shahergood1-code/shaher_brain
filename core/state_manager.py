@@ -8,8 +8,7 @@ core/state_manager.py
 import json
 import logging
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Any
 
 from config.settings import WORKSPACE_DIR
 
@@ -36,7 +35,7 @@ def _get_supabase_client():
     return _supabase_client_instance
 
 
-def _load_local_history() -> List[Dict[str, Any]]:
+def _load_local_history() -> list[dict[str, Any]]:
     if LOCAL_HISTORY_FILE.exists():
         try:
             return json.loads(LOCAL_HISTORY_FILE.read_text(encoding="utf-8"))
@@ -45,7 +44,7 @@ def _load_local_history() -> List[Dict[str, Any]]:
     return []
 
 
-def _save_local_history(data: List[Dict[str, Any]]) -> None:
+def _save_local_history(data: list[dict[str, Any]]) -> None:
     try:
         LOCAL_HISTORY_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     except OSError:
@@ -56,7 +55,7 @@ class StateManager:
     """إدارة حفظ واسترجاع المهام والمنشورات والإحصائيات."""
 
     @staticmethod
-    def create_task(user_goal: str, task_type: str = "daily_pipeline") -> Dict[str, Any]:
+    def create_task(user_goal: str, task_type: str = "daily_pipeline") -> dict[str, Any]:
         """تسجيل بدء مهمة جديدة في content_tasks."""
         now_iso = datetime.now(timezone.utc).isoformat()
         client = _get_supabase_client()
@@ -90,7 +89,7 @@ class StateManager:
         return local_task
 
     @staticmethod
-    def append_task_step(task_id: str, step_num: int, tool_name: str, args: Dict[str, Any], result: Dict[str, Any]) -> None:
+    def append_task_step(task_id: str, step_num: int, tool_name: str, args: dict[str, Any], result: dict[str, Any]) -> None:
         """إضافة خطوة تم تنفيذها إلى سجل خطوات المهمة."""
         step_entry = {
             "step": step_num,
@@ -122,7 +121,7 @@ class StateManager:
         _save_local_history(history)
 
     @staticmethod
-    def complete_task(task_id: str, summary: str, status: str = "completed", error_details: Optional[str] = None) -> None:
+    def complete_task(task_id: str, summary: str, status: str = "completed", error_details: str | None = None) -> None:
         """تحديث حالة انتهاء المهمة (نجاح أو فشل)."""
         now_iso = datetime.now(timezone.utc).isoformat()
         client = _get_supabase_client()
@@ -157,14 +156,14 @@ class StateManager:
     def record_post(
         task_id: str,
         content_type: str,
-        title: Optional[str] = None,
-        script: Optional[str] = None,
-        prompt_used: Optional[str] = None,
-        caption: Optional[str] = None,
-        media_path: Optional[str] = None,
-        platforms: Optional[List[str]] = None,
+        title: str | None = None,
+        script: str | None = None,
+        prompt_used: str | None = None,
+        caption: str | None = None,
+        media_path: str | None = None,
+        platforms: list[str] | None = None,
         status: str = "draft",
-    ) -> Optional[str]:
+    ) -> str | None:
         """تسجيل منشور جديد في content_posts."""
         client = _get_supabase_client()
         platforms = platforms or []

@@ -16,7 +16,7 @@ import re
 import time
 import urllib.parse
 from dataclasses import dataclass
-from typing import Optional
+
 import httpx
 from dotenv import load_dotenv
 
@@ -41,8 +41,8 @@ class ImageResult:
     prompt: str
     size: str
     response_time_ms: int
-    revised_prompt: Optional[str] = None
-    error: Optional[str] = None
+    revised_prompt: str | None = None
+    error: str | None = None
 
 
 def detect_format(text: str) -> str:
@@ -86,8 +86,9 @@ def clean_prompt(raw_prompt: str) -> str:
 
 async def generate_image(
     prompt: str,
-    model: Optional[str] = None,
-    format_type: Optional[str] = None,
+    model: str | None = None,
+    format_type: str | None = None,
+    aspect_ratio: str | None = None,
     n: int = 1,
 ) -> ImageResult:
     """
@@ -96,7 +97,19 @@ async def generate_image(
     start = time.time()
     
     # تحديد المقاس
-    fmt = format_type or detect_format(prompt)
+    if aspect_ratio:
+        ar = aspect_ratio.strip().lower()
+        if ar in ["16:9", "16/9"]:
+            fmt = "youtube"
+        elif ar in ["9:16", "9/16"]:
+            fmt = "story"
+        elif ar in ["1:1"]:
+            fmt = "instagram"
+        else:
+            fmt = format_type or detect_format(prompt)
+    else:
+        fmt = format_type or detect_format(prompt)
+
     width, height = IMAGE_DIMENSIONS.get(fmt, IMAGE_DIMENSIONS["default"])
     size_str = f"{width}x{height}"
     model_name = model or DEFAULT_IMAGE_MODEL
@@ -200,8 +213,9 @@ async def _enhance_prompt(prompt_text: str, format_type: str = "default") -> str
     try:
         gemini_key = os.getenv("GEMINI_API_KEY_BRAIN")
         if gemini_key:
-            import google.generativeai as genai
             import asyncio
+
+            import google.generativeai as genai
             genai.configure(api_key=gemini_key)
             model_name = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
             m = genai.GenerativeModel(model_name)

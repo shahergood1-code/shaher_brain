@@ -8,18 +8,17 @@ workers/browser/flow_worker.py
 """
 
 import logging
-import time
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any
 
-from config.settings import FLOW_URL, IMAGES_DIR, RAW_SCENES_DIR
 from config.selectors import FLOW_SELECTORS
+from config.settings import FLOW_URL, IMAGES_DIR, RAW_SCENES_DIR
 from workers.browser.cdp_client import get_cdp_manager
 
 logger = logging.getLogger("FlowWorker")
 
 
-def generate_flow_image(prompt: str, save_as: str = "image.png") -> Dict[str, Any]:
+def generate_flow_image(prompt: str, save_as: str = "image.png") -> dict[str, Any]:
     """
     يفتح Flow، يختار Nano Banana 2، يدخل البرومبت، ويحمل الصورة الناتجة.
     """
@@ -90,7 +89,7 @@ def generate_flow_image(prompt: str, save_as: str = "image.png") -> Dict[str, An
                 pass
 
 
-def generate_flow_video(source_image: str, motion_prompt: str, save_as: str = "scene.mp4") -> Dict[str, Any]:
+def generate_flow_video(source_image: str, motion_prompt: str, save_as: str = "scene.mp4") -> dict[str, Any]:
     """
     تحريك صورة ثابتة عبر Veo Lite في Flow وحفظ مقطع الفيديو الناتج.
     """
@@ -161,11 +160,12 @@ def generate_flow_video(source_image: str, motion_prompt: str, save_as: str = "s
                 pass
 
 
-def _fallback_to_brain_image(prompt: str, dest_path: Path, reason: str) -> Dict[str, Any]:
+def _fallback_to_brain_image(prompt: str, dest_path: Path, reason: str) -> dict[str, Any]:
     """توليد الصورة عبر SeekAI المسجل في المرحلة الأولى."""
     try:
         import asyncio
         import concurrent.futures
+
         from brain.image_client import generate_image
 
         coro = generate_image(prompt=prompt, model="nano-banana")

@@ -10,10 +10,9 @@ workspace/comprehensive_system_audit.py
 5. مصفوفة المقارنة التنافسية العالمية (ضد ElevenLabs, OpenAI Whisper, CapCut, Railway)
 """
 
-import os
+import asyncio
 import sys
 import time
-import asyncio
 from pathlib import Path
 
 # ضبط الترميز للغة العربية في ويندوز
@@ -29,6 +28,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 audit_results = {}
@@ -45,11 +45,9 @@ print("=" * 75)
 print("\n[1/5] ☁️ اختبار خوادم البوت والنشر السحابي (FastAPI / Vercel / Polling):")
 t0 = time.perf_counter()
 try:
-    from bot.main import app
-    from api.index import app as vercel_app
-    import bot.run_polling as polling_runner
-
     from fastapi.testclient import TestClient
+
+    from bot.main import app
     client = TestClient(app)
     health_resp = client.get("/health")
 
@@ -74,7 +72,7 @@ except Exception as e:
 # ─────────────────────────────────────────────────────────────────────────────
 print("\n[2/5] 🧠 اختبار توجيه النوايا ومرونة محركات الذكاء الاصطناعي (5 Engines):")
 try:
-    from brain.router import route, MessageIntent
+    from brain.router import MessageIntent, route
 
     t_route = time.perf_counter()
     r1 = route("/start")
@@ -169,8 +167,9 @@ if audio_path and Path(audio_path).exists():
         print(f"  ❌ خطأ في تفريغ الصوت: {e}")
 
 try:
-    from workers.media.video_renderer import render_shorts_video
     from PIL import Image
+
+    from workers.media.video_renderer import render_shorts_video
 
     temp_img_path = ROOT_DIR / "workspace" / "temp_render" / "audit_frame.jpg"
     temp_img_path.parent.mkdir(parents=True, exist_ok=True)

@@ -5,9 +5,9 @@ workspace/benchmark_telegram_chat.py
 ومقارنتها المعمارية والنوعية مع Gemini Flash الجديد.
 """
 
+import asyncio
 import sys
 import time
-import asyncio
 from pathlib import Path
 
 # إجبار التيرمينال على دعم UTF-8 في ويندوز
@@ -16,8 +16,8 @@ if hasattr(sys.stdout, "reconfigure"):
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from brain.ai_client import get_ai_response
 from brain.router import route
-from brain.ai_client import get_ai_response, get_ollama_response
 from memory.logger import get_full_context
 
 

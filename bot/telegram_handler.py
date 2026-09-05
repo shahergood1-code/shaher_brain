@@ -14,18 +14,20 @@ bot/telegram_handler.py
   4. إرسال الرد لـ Telegram
 """
 
-import os
-import time
 import asyncio
-from typing import Union
-from telegram import Update, Bot
+import logging
+import os
+
+logger = logging.getLogger("telegram_handler")
+
+from telegram import Bot, Update
 from telegram.constants import ChatAction
 
-from brain.router import route, MessageIntent, handle_command
+from bot.voice_handler import transcribe_voice
 from brain.ai_client import get_ai_response
 from brain.image_client import generate_image
-from memory.logger import log_interaction, get_full_context
-from bot.voice_handler import transcribe_voice
+from brain.router import MessageIntent, handle_command, route
+from memory.logger import get_full_context, log_interaction
 
 
 # Telegram user IDs المصرح لهم (حماية البوت في البداية)
@@ -43,7 +45,7 @@ def _get_authorized_ids() -> set[int]:
 AUTHORIZED_IDS = _get_authorized_ids()
 
 
-async def handle_update(update_data: Union[dict, Update], bot: Bot) -> None:
+async def handle_update(update_data: dict | Update, bot: Bot) -> None:
     """
     نقطة الدخول الرئيسية — بتاخد update من Telegram وتعالجه.
     بيتستدعى من webhook في main.py أو من polling في run_polling.py
@@ -103,6 +105,190 @@ async def handle_update(update_data: Union[dict, Update], bot: Bot) -> None:
 
     # ── معالجة الأوامر مباشرة ──
     if decision.intent == MessageIntent.COMMAND:
+        cmd_clean = user_text.strip().split()[0].lower().lstrip("/!")
+
+        # 1. أمر تشغيل وإنتاج فيديو شورتس فيروزي فوري
+        if cmd_clean in ["content_run", "run_content"]:
+            # استخراج الموضوع المخصص لو كتبه المستخدم بعد الأمر
+            parts = user_text.strip().split(maxsplit=1)
+            custom_topic = parts[1] if len(parts) > 1 else "لغز اختفاء لعبة شهيرة في عام 2004"
+
+            await bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    f"🎬 *بدء دورة إنتاج ومونتاج الشورتس الفيروسي فوراً...*\n"
+                    f"🎯 *الموضوع:* {custom_topic}\n\n"
+                    f"⏳ *مراحل التنفيذ الآلية:*\n"
+                    f"1️⃣ صياغة السكريبت وفق قواعد الفضول وسيكولوجية النوستالجيا\n"
+                    f"2️⃣ مراجعة وفلترة السكريبت عبر الناقد القاسي (The Ruthless Critic)\n"
+                    f"3️⃣ توليد الفويس أوفر والترجمة المغناطيسية الفيروسية (Yellow ASS)\n"
+                    f"4️⃣ المونتاج وحركة الكاميرا (Ken-Burns) والتصدير بـ NVENC على كارت RTX 4070..."
+                ),
+                parse_mode="Markdown"
+            )
+
+            try:
+                from core.orchestrator import produce_viral_short_pipeline
+                res = await produce_viral_short_pipeline(topic=custom_topic)
+
+                if res.get("status") == "ok" and res.get("video_path") and os.path.exists(res["video_path"]):
+                    video_file_path = res["video_path"]
+                    caption_text = (
+                        f"🎥 *{res.get('title', 'فيديو شورتس فيروزي')}*\n\n"
+                        f"🧐 *تقييم الناقد القاسي:* `{res.get('critic_score')}/10`\n"
+                        f"⚡ *زمن الإنتاج الكامل:* `{res.get('production_time_sec')} ثانية`\n\n"
+                        f"📝 *السكريبت:*\n_{res.get('script', '')[:280]}..._\n\n"
+                        f"🏷️ {res.get('caption', '')}"
+                    )
+
+                    await bot.send_chat_action(chat_id=chat_id, action=ChatAction.UPLOAD_VIDEO)
+                    with open(video_file_path, "rb") as vf:
+                        try:
+                            await bot.send_video(
+                                chat_id=chat_id,
+                                video=vf,
+                                caption=caption_text,
+                                parse_mode="Markdown",
+                                supports_streaming=True,
+                            )
+                        except Exception:
+                            # في حال تعذر إرسال الفيديو كـ stream نرسله كملف document
+                            vf.seek(0)
+                            await bot.send_document(
+                                chat_id=chat_id,
+                                document=vf,
+                                caption=caption_text,
+                                parse_mode="Markdown",
+                            )
+                    return
+                else:
+                    await bot.send_message(
+                        chat_id=chat_id,
+                        text=f"⚠️ تعذر إكمال الريندر: {res.get('error', 'خطأ غير معروف')}"
+                    )
+                    return
+            except Exception as pipe_err:
+                logger.error(f"خطأ أثناء تشغيل خط إنتاج الشورتس: {pipe_err}", exc_info=True)
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=f"❌ حدث خطأ أثناء إنتاج الفيديو: `{pipe_err}`",
+                    parse_mode="Markdown"
+                )
+                return
+
+        # 2. أمر تجهيز هرم المحتوى الأسبوعي بالكامل
+        if cmd_clean in ["content_batch", "batch_content"]:
+            parts = user_text.strip().split(maxsplit=1)
+            custom_niche = parts[1] if len(parts) > 1 else "أسرار الألعاب والنوستالجيا المظلمة وألغاز الإنترنت"
+
+            await bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    f"📅 *جاري إعداد هرم المحتوى الأسبوعي الكامل (Weekly Batch)...*\n"
+                    f"🎯 *النيتش:* {custom_niche}\n"
+                    f"⏳ يتم الآن تخطيط 2 فيديو طويل (8-12 دقيقة) بـ 4 فصول + 7 شورتس يومية + تصميم الأغلفة الصادمة..."
+                ),
+                parse_mode="Markdown"
+            )
+
+            try:
+                from core.weekly_batch import run_weekly_batch_pipeline
+                batch_res = await run_weekly_batch_pipeline(niche=custom_niche)
+
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=batch_res.get("summary", "تم تجهيز الحزمة الأسبوعية بنجاح!"),
+                )
+
+                # إرسال معاينات الأغلفة الصادمة
+                for thumb in batch_res.get("thumbnails", []):
+                    t_url = thumb.get("thumbnail_url")
+                    if t_url:
+                        try:
+                            await bot.send_photo(
+                                chat_id=chat_id,
+                                photo=t_url,
+                                caption=f"🎨 *غلاف Split-Screen صادم:*\n{thumb.get('video_title')}",
+                                parse_mode="Markdown"
+                            )
+                        except Exception:
+                            pass
+                return
+            except Exception as batch_err:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=f"❌ تعذر إنهاء حزمة الأسبوع: {batch_err}"
+                )
+                return
+
+        # 3. أمر توليد فيلم وثائقي طويل بنظام 3D Mannequin
+        if cmd_clean in ["documentary", "doc", "mannequin", "وثائقي"]:
+            parts = user_text.strip().split(maxsplit=1)
+            custom_topic = parts[1] if len(parts) > 1 else ""
+
+            await bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    f"🎬 *بدء تشغيل محرك الوثائقيات الطويلة (3D Mannequin System)...*\n"
+                    f"🎯 *الموضوع:* {custom_topic or 'اختيار وتوليد فكرة استقصائية كبرى تلقائياً'}\n\n"
+                    f"🛡️ *المعايير المعمارية المفعلة:*\n"
+                    f"• ثبات الهوية البصرية 100% رياضياً عبر المشاهد بنظام المانيكان المفرغ\n"
+                    f"• درع الحماية الإعلاني (Zero Gore / 100% YouTube Monetization)\n"
+                    f"• نظام الألوان الثلاثي: ⚪ محايد/شهود | 🔴 خطر وتهديد | 🔵 ضحايا وفلاش باك\n"
+                    f"• إعداد الـ Character Sheet والسكريبت وبرومبتات المشاهد والغلاف 16:9..."
+                ),
+                parse_mode="Markdown"
+            )
+
+            try:
+                from core.mannequin_engine import MannequinDocumentaryEngine
+                engine = MannequinDocumentaryEngine()
+                package = await engine.generate_full_documentary_package(
+                    topic=custom_topic,
+                    duration="5m",
+                )
+
+                exported_files = package.get("exported_files", {})
+                md_file_path = exported_files.get("markdown")
+
+                summary_msg = (
+                    f"✅ *تم بنجاح إعداد حزمة الوثائقي الكاملة!*\n\n"
+                    f"📌 *العنوان:* {package.get('title')}\n"
+                    f"⏱️ *المدة:* {package.get('duration')} | *إجمالي المشاهد:* {package.get('total_scenes')} مشهداً\n\n"
+                    f"🎭 *ورقة تثبيت الهوية (Character Sheet):*\n"
+                    f"_{package.get('character_sheet', {}).get('character_sheet_prompt', '')[:220]}..._\n\n"
+                    f"📝 *مقتطف من السكريبت:*\n"
+                    f"_{package.get('full_voiceover_arabic', '')[:250]}..._\n\n"
+                    f"🏷️ *أفضل عنوان مقترح:* {package.get('metadata', {}).get('titles', [''])[0]}\n\n"
+                    f"📁 *تم تصدير ملف الحزمة السينمائية الكاملة أدناه:*"
+                )
+
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=summary_msg,
+                    parse_mode="Markdown"
+                )
+
+                # إرسال ملف الـ Markdown الكامل كـ Document
+                if md_file_path and os.path.exists(md_file_path):
+                    with open(md_file_path, "rb") as mf:
+                        await bot.send_document(
+                            chat_id=chat_id,
+                            document=mf,
+                            filename=os.path.basename(md_file_path),
+                            caption=f"🎬 حزمة برومبتات وسيناريو: {package.get('title')}",
+                        )
+                return
+            except Exception as doc_err:
+                logger.error(f"خطأ أثناء توليد الوثائقي: {doc_err}", exc_info=True)
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=f"❌ تعذر إنهاء حزمة الوثائقي: `{doc_err}`",
+                    parse_mode="Markdown"
+                )
+                return
+
+        # باقي الأوامر العادية
         response_text = await handle_command(user_text)
         await bot.send_message(
             chat_id=chat_id,
@@ -199,7 +385,7 @@ async def handle_update(update_data: Union[dict, Update], bot: Bot) -> None:
     if "```html" in response_to_send.lower() or "```python" in response_to_send.lower() or "<!doctype html>" in response_to_send.lower():
         try:
             import io
-            from telegram import InputFile
+
             
             if "```html" in response_to_send.lower():
                 ext = "html"

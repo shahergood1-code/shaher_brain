@@ -7,12 +7,12 @@ utils/gpu_guard.py
 
 import logging
 import subprocess
-from typing import Dict, Any
+from typing import Any
 
 logger = logging.getLogger("GPUGuard")
 
 
-def get_gpu_memory_status() -> Dict[str, Any]:
+def get_gpu_memory_status() -> dict[str, Any]:
     """استعلام عن استهلاك VRAM عبر nvidia-smi."""
     try:
         cmd = [

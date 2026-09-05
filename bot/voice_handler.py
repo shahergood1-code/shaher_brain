@@ -12,10 +12,11 @@ bot/voice_handler.py
 المرحلة 1: بنستخدم Gemini multimodal لتحويل الصوت لنص مباشرة.
 """
 
+import asyncio
 import os
 import tempfile
-import asyncio
 from pathlib import Path
+
 from telegram import Bot
 
 

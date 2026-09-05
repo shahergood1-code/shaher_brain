@@ -7,7 +7,6 @@ main.py
 import argparse
 import logging
 import sys
-from pathlib import Path
 
 # ضبط ترميز الإخراج لـ UTF-8 على ويندوز لدعم العربية والإيموجي
 if sys.platform == "win32":
@@ -62,11 +61,18 @@ def main():
     sched_parser.add_argument("--time", type=str, default="10:00", help="وقت التشغيل اليومي بتنسيق HH:mm (افتراضي 10:00)")
     sched_parser.add_argument("--remove", action="store_true", help="حذف المهمة من مجدول ويندوز")
 
+    # 8. محرك الوثائقيات ثلاثية الأبعاد (3D Mannequin Documentary Generator)
+    doc_parser = subparsers.add_parser("documentary", help="توليد حزمة إنتاج فيلم وثائقي طويل بنظام المانيكان ثلاثي الأبعاد")
+    doc_parser.add_argument("--topic", type=str, default="", help="موضوع أو عنوان القضية/الجريمة (اتركه فارغاً للتوليد التلقائي)")
+    doc_parser.add_argument("--duration", type=str, default="5m", choices=["30s", "1m", "3m", "5m", "10m"], help="المدة الزمنية المستهدفة للفيلم")
+    doc_parser.add_argument("--niche", type=str, default="جرائم حقيقية وألغاز غامضة واستخبارات وسرقات كبرى", help="مجال الوثائقي")
+    doc_parser.add_argument("--ideas-only", action="store_true", help="توليد 10 أفكار استقصائية حقيقية فقط للاختيار منها")
+
     args = parser.parse_args()
 
     if not args.command or args.command == "run":
-        from core.prompts import DAILY_ROUTINE_PROMPT
         from core.orchestrator import run_content_orchestrator
+        from core.prompts import DAILY_ROUTINE_PROMPT
 
         goal = args.goal if (hasattr(args, "goal") and args.goal) else DAILY_ROUTINE_PROMPT
         print("\n" + "=" * 60)
@@ -78,14 +84,14 @@ def main():
             print(f"الملخص:\n{res['summary']}")
 
     elif args.command == "status":
+        from config.settings import FFMPEG_EXE, OLLAMA_MODEL
         from utils.gpu_guard import get_gpu_memory_status
         from workers.browser.cdp_client import is_cdp_port_open
-        from config.settings import OLLAMA_MODEL, FFMPEG_EXE
 
         print("\n🔍 فحص حالة النظام:")
         print("-" * 40)
         gpu = get_gpu_memory_status()
-        print(f"🎮 كرت الشاشة RTX 4070:")
+        print("🎮 كرت الشاشة RTX 4070:")
         print(f"   - الذاكرة الحرة: {gpu['free_mb']:.0f} MB / {gpu['total_mb']:.0f} MB")
         print(f"   - درجة الحرارة: {gpu['temperature_c']}°C")
 
@@ -128,12 +134,54 @@ def main():
         print(f"\nالرد:\n{res.get('response')}\nالمصدر: {res.get('source')}")
 
     elif args.command == "schedule":
-        from utils.scheduler_setup import register_windows_daily_task, remove_windows_daily_task
+        from utils.scheduler_setup import (
+            register_windows_daily_task,
+            remove_windows_daily_task,
+        )
         if args.remove:
             remove_windows_daily_task()
         else:
             register_windows_daily_task(run_time=args.time)
 
+    elif args.command == "documentary":
+        import asyncio
+
+        from core.mannequin_engine import MannequinDocumentaryEngine
+
+        engine = MannequinDocumentaryEngine()
+
+        if args.ideas_only:
+            print("\n" + "=" * 60)
+            print(f"💡 توليد 10 أفكار وثائقية بنظام 3D Mannequin في مجال: {args.niche}")
+            print("=" * 60)
+            ideas = asyncio.run(engine.generate_ideas(niche=args.niche, count=10))
+            for idx, item in enumerate(ideas, 1):
+                print(f"\n[{idx}] 📌 {item.get('title')}")
+                print(f"   الفرضية: {item.get('premise')}")
+                if item.get('visual_potential'):
+                    print(f"   الإمكانيات البصرية: {item.get('visual_potential')}")
+            print("\nهل تريد اختيار واحدة من هذه الأفكار، أم تريد 10 أفكار جديدة؟")
+
+        else:
+            print("\n" + "=" * 60)
+            print("🎬 تشغيل دورة إنتاج الوثائقي بنظام المانيكان ثلاثي الأبعاد")
+            print(f"🎯 الموضوع: {args.topic or 'توليد تلقائي'}")
+            print(f"⏱️ المدة المستهدفة: {args.duration}")
+            print("=" * 60)
+            package = asyncio.run(engine.generate_full_documentary_package(
+                topic=args.topic,
+                duration=args.duration,
+                niche=args.niche,
+            ))
+            print("\n" + "✨" * 30)
+            print(f"✅ تم بنجاح إنتاج حزمة الوثائقي: {package.get('title')}")
+            print(f"📊 إجمالي المشاهد المولدة: {package.get('total_scenes')} مشهداً")
+            files = package.get("exported_files", {})
+            print(f"📄 ملف Markdown السينمائي: {files.get('markdown')}")
+            print(f"💾 ملف JSON البرمجي:      {files.get('json')}")
+            print("✨" * 30)
+
 
 if __name__ == "__main__":
     main()
+

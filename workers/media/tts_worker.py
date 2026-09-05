@@ -7,15 +7,14 @@ workers/media/tts_worker.py
 
 import asyncio
 import logging
-from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 from config.settings import AUDIO_DIR, DEFAULT_VOICE
 
 logger = logging.getLogger("TTSWorker")
 
 
-def generate_voiceover(text: str, save_as: str = "voiceover.mp3", voice: str = DEFAULT_VOICE) -> Dict[str, Any]:
+def generate_voiceover(text: str, save_as: str = "voiceover.mp3", voice: str = DEFAULT_VOICE) -> dict[str, Any]:
     """
     يولد فويس أوفر صوتي عربي من النص ويحفظه في مجلد الصوتيات.
     """

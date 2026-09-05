@@ -11,17 +11,14 @@ Routes:
 مهم: Vercel بيستخدم الـ app object مباشرة كـ ASGI handler.
 """
 
-import os
 import json
-import hmac
-import hashlib
 import logging
-from contextlib import asynccontextmanager
+import os
 
-from fastapi import FastAPI, Request, HTTPException, Response
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from telegram import Bot
-from dotenv import load_dotenv
 
 load_dotenv()
 

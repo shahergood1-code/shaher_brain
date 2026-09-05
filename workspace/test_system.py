@@ -37,7 +37,7 @@ print("\n[1/7] فحص كرت الشاشة وذاكرة VRAM:")
 try:
     from utils.gpu_guard import get_gpu_memory_status
     gpu = get_gpu_memory_status()
-    print(f"  - الكرت: NVIDIA GeForce RTX 4070 Laptop")
+    print("  - الكرت: NVIDIA GeForce RTX 4070 Laptop")
     print(f"  - الذاكرة المتاحة: {gpu['free_mb']:.0f} MB / {gpu['total_mb']:.0f} MB")
     print(f"  - درجة الحرارة: {gpu['temperature_c']}°C")
     results["1. GPU & VRAM Guard"] = "✅ سليم ومرتاح"
@@ -77,8 +77,9 @@ except Exception as e:
 # 4. FFmpeg NVENC 9:16 Video Rendering
 print("\n[4/7] فحص المونتاج الفائق بـ NVENC وحرق الترجمة (9:16):")
 try:
-    from workers.media.video_renderer import render_shorts_video
     from PIL import Image, ImageDraw
+
+    from workers.media.video_renderer import render_shorts_video
 
     # مشهد تجريبي ملون
     img_path = Path("workspace/downloads/images/scene_pipeline.png")
@@ -105,6 +106,7 @@ except Exception as e:
 print("\n[5/7] فحص Ollama (qwen2.5:7b) واستدعاء الأدوات:")
 try:
     import ollama
+
     from core.orchestrator import CONTENT_TOOLS
     client = ollama.Client()
     chat_res = client.chat(
@@ -127,6 +129,7 @@ except Exception as e:
 print("\n[6/7] فحص أوامر Shaher Brain Router:")
 try:
     import asyncio
+
     from brain.router import handle_command
     resp = asyncio.run(handle_command("/content"))
     if "Content Orchestrator" in resp:
